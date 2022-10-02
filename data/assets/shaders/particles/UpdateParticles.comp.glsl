@@ -58,8 +58,21 @@ void main()
   {
     Particle particle = particles.list[index];
     vec2 velocity = unpackHalf2x16(particle.velocity) * .9995;
-    float accelMagnitude = uniforms.magnetism / max(3.0, distance(uniforms.cursorPosition, particle.position));
+    float accelMagnitude = uniforms.magnetism / max(1.0, distance(uniforms.cursorPosition, particle.position));
+    accelMagnitude = 1.0;
     vec2 acceleration = accelMagnitude * normalize(uniforms.cursorPosition - particle.position);
+
+    // visualize velocity
+    //particle.emissive.x = packHalf2x16(abs(velocity) * .2);
+
+    // visualize acceleration
+    //particle.emissive.x = packHalf2x16(abs(acceleration) * .2);
+
+    // visualize velocity magnitude
+    particle.emissive.y = packHalf2x16(vec2(length(velocity * .2), 1.0));
+
+    // visualize acceleration magnitude
+    //particle.emissive.y = packHalf2x16(vec2(length(acceleration), 1.0));
 
     if (particle.flags > 0)
     {

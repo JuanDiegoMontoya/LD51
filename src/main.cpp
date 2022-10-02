@@ -9,7 +9,7 @@ int main(int, const char* const*)
 {
   EventBus eventBus;
   auto scene = ecs::Scene(&eventBus);
-  auto app = Application("Galunga", &scene, &eventBus);
+  auto app = Application("LD51", &scene, &eventBus);
   app.Run();
 
   return 0;

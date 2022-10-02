@@ -581,7 +581,7 @@ void Renderer::DrawParticles(const Fwog::Buffer& particles, const Fwog::Buffer& 
 {
   auto attachment0 = Fwog::RenderAttachment{ .texture = &_resources->frame.particle_hdr_r, .clearValue{.color{.ui = 0}}, .clearOnLoad = true };
   auto attachment1 = Fwog::RenderAttachment{ .texture = &_resources->frame.particle_hdr_g, .clearValue{.color{.ui = 0}}, .clearOnLoad = true };
-  auto attachment2 = Fwog::RenderAttachment{ .texture = &_resources->frame.particle_hdr_g, .clearValue{.color{.ui = 0}}, .clearOnLoad = true };
+  auto attachment2 = Fwog::RenderAttachment{ .texture = &_resources->frame.particle_hdr_b, .clearValue{.color{.ui = 0}}, .clearOnLoad = true };
   auto attachments = { attachment0, attachment1, attachment2 };
   Fwog::BeginRendering({ .colorAttachments = { attachments } });
   Fwog::EndRendering();

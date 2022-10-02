@@ -13,7 +13,7 @@ void main()
   o_color = vec4(
     float(texture(s_target_r, v_uv).r) / 256.0,
     float(texture(s_target_g, v_uv).r) / 256.0,
-    float(texture(s_target_g, v_uv).r) / 256.0,
+    float(texture(s_target_b, v_uv).r) / 256.0,
     1.0
   );
 }

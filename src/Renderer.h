@@ -40,7 +40,7 @@ public:
   void DrawBoxes(std::span<const ecs::DebugBox> boxes);
   void DrawCircles(std::span<const ecs::DebugCircle> circles);
 
-  void DrawParticles(const Fwog::Buffer& particles, const Fwog::Buffer& renderIndices);
+  void DrawParticles(const Fwog::Buffer& particles, const Fwog::Buffer& renderIndices, uint32_t maxParticles);
 
   struct Resources;
 

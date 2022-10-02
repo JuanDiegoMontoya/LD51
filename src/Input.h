@@ -160,6 +160,15 @@ namespace input
   struct MouseScroll { bool down = false; };
   struct MousePosition { bool yAxis = false; };
 
+  struct MousePositionEvent
+  {
+    double scrollOffset = 0;
+    double cursorPosX = 0;
+    double cursorPosY = 0;
+    uint32_t windowX;
+    uint32_t windowY;
+  };
+
   struct ActionInput
   {
     std::variant<Button, MouseScroll> type;

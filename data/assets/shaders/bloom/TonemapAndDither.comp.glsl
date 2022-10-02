@@ -1,7 +1,7 @@
 #version 450 core
 
 layout(binding = 0) uniform sampler2D s_sceneColor;
-layout(binding = 1) uniform sampler2D s_noise;
+//layout(binding = 1) uniform sampler2D s_noise;
 
 layout(binding = 0) uniform writeonly restrict image2D i_finalColor;
 
@@ -25,12 +25,12 @@ vec3 linear_to_srgb(vec3 linearColor)
   return mix(higher, lower, cutoff);
 }
 
-vec3 apply_dither(vec3 color, vec2 uv)
-{
-  vec2 uvNoise = uv * (vec2(textureSize(s_sceneColor, 0)) / vec2(textureSize(s_noise, 0)));
-  vec3 noiseSample = textureLod(s_noise, uvNoise, 0).rgb;
-  return color + vec3((noiseSample - 0.5) / 255.0);
-}
+// vec3 apply_dither(vec3 color, vec2 uv)
+// {
+//   vec2 uvNoise = uv * (vec2(textureSize(s_sceneColor, 0)) / vec2(textureSize(s_noise, 0)));
+//   vec3 noiseSample = textureLod(s_noise, uvNoise, 0).rgb;
+//   return color + vec3((noiseSample - 0.5) / 255.0);
+// }
 
 layout(local_size_x = 8, local_size_y = 8) in;
 void main()
@@ -44,7 +44,8 @@ void main()
   vec3 hdrColor = textureLod(s_sceneColor, uv, 0).rgb;
   vec3 ldrColor = aces_approx(hdrColor);
   vec3 srgbColor = linear_to_srgb(ldrColor);
-  vec3 ditheredColor = apply_dither(srgbColor, uv);
+  //vec3 ditheredColor = apply_dither(srgbColor, uv);
+  vec3 ditheredColor = srgbColor;
 
   imageStore(i_finalColor, gid, vec4(ditheredColor, 1.0));
 }

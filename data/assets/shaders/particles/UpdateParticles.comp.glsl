@@ -57,11 +57,11 @@ void main()
   if (index < particles.list.length())
   {
     Particle particle = particles.list[index];
-    vec2 velocity = unpackHalf2x16(particle.velocity);
-    vec2 acceleration = vec2(1.0) / min(vec2(0.1), (uniforms.magnetism * (uniforms.cursorPosition - particle.position)));
+    vec2 velocity = unpackHalf2x16(particle.velocity) * .9995;
+    float accelMagnitude = uniforms.magnetism / max(1.0, distance(uniforms.cursorPosition, particle.position));
+    vec2 acceleration = accelMagnitude * normalize(uniforms.cursorPosition - particle.position);
 
-    float life = 1.0;
-    if (life > 0.0)
+    if (particle.flags > 0)
     {
       velocity += acceleration * uniforms.dt;
       particle.position += velocity * uniforms.dt;

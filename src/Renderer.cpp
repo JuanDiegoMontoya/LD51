@@ -136,6 +136,11 @@ struct Renderer::Resources
     uint32_t width{};
     uint32_t height{};
     Fwog::Texture output_ldr;
+    Fwog::Texture output_hdr;
+    Fwog::Texture particle_hdr_r;
+    Fwog::Texture particle_hdr_g;
+    Fwog::Texture particle_hdr_b;
+
     float AspectRatio()
     {
       return static_cast<float>(width) / height;
@@ -146,6 +151,8 @@ struct Renderer::Resources
   Fwog::GraphicsPipeline backgroundPipeline;
   Fwog::GraphicsPipeline spritePipeline;
   Fwog::ComputePipeline particlePipeline;
+  Fwog::ComputePipeline tonemapPipeline;
+  Fwog::GraphicsPipeline particleResolvePipeline;
   Fwog::TypedBuffer<SpriteUniforms> spritesUniformsBuffer;
   Fwog::TypedBuffer<FrameUniforms> frameUniformsBuffer;
 
@@ -174,6 +181,7 @@ Renderer::Renderer(GLFWwindow* window)
 #endif
 
   glEnable(GL_FRAMEBUFFER_SRGB);
+  glDisable(GL_DITHER);
 
   int iframebufferWidth{};
   int iframebufferHeight{};
@@ -185,7 +193,11 @@ Renderer::Renderer(GLFWwindow* window)
     {
       .frame = {.width = framebufferWidth,
                 .height = framebufferHeight,
-                .output_ldr = Fwog::CreateTexture2D({framebufferWidth, framebufferHeight}, Fwog::Format::R8G8B8A8_SRGB) },
+                .output_ldr = Fwog::CreateTexture2D({framebufferWidth, framebufferHeight}, Fwog::Format::R8G8B8A8_UNORM),
+                .output_hdr = Fwog::CreateTexture2D({framebufferWidth, framebufferHeight}, Fwog::Format::R16G16B16A16_FLOAT),
+                .particle_hdr_r = Fwog::CreateTexture2D({framebufferWidth, framebufferHeight}, Fwog::Format::R32_UINT),
+                .particle_hdr_g = Fwog::CreateTexture2D({framebufferWidth, framebufferHeight}, Fwog::Format::R32_UINT),
+                .particle_hdr_b = Fwog::CreateTexture2D({framebufferWidth, framebufferHeight}, Fwog::Format::R32_UINT) },
       .spritesUniformsBuffer = Fwog::TypedBuffer<SpriteUniforms>(1024, Fwog::BufferStorageFlag::DYNAMIC_STORAGE),
       .frameUniformsBuffer = Fwog::TypedBuffer<FrameUniforms>(Fwog::BufferStorageFlag::DYNAMIC_STORAGE),
       .boxVertexBuffer = Fwog::TypedBuffer<glm::vec2>(MakeBoxVertices()),
@@ -251,8 +263,18 @@ Renderer::Renderer(GLFWwindow* window)
     .colorBlendState = { .attachments = std::span(&colorBlend, 1) }
   });
 
-  //auto particle_cs = Fwog::Shader(Fwog::PipelineStage::COMPUTE_SHADER, LoadFile("assets/shaders/particles/RenderParticles.comp.glsl"));
-  //_resources->particlePipeline = Fwog::CompileComputePipeline({ .shader = &particle_cs });
+  auto particle_cs = Fwog::Shader(Fwog::PipelineStage::COMPUTE_SHADER, LoadFile("assets/shaders/particles/RenderParticles.comp.glsl"));
+  _resources->particlePipeline = Fwog::CompileComputePipeline({ .shader = &particle_cs });
+
+  auto particle_resolve_fs = Fwog::Shader(Fwog::PipelineStage::FRAGMENT_SHADER, LoadFile("assets/shaders/particles/ResolveParticleImage.frag.glsl"));
+  _resources->particleResolvePipeline = Fwog::CompileGraphicsPipeline({
+    .vertexShader = &bg_vs,
+    .fragmentShader = &particle_resolve_fs,
+  });
+
+  auto tonemap_cs = Fwog::Shader(Fwog::PipelineStage::COMPUTE_SHADER, LoadFile("assets/shaders/bloom/TonemapAndDither.comp.glsl"));
+  _resources->tonemapPipeline = Fwog::CompileComputePipeline({ .shader = &tonemap_cs });
+  
 }
 
 Renderer::~Renderer()
@@ -414,8 +436,60 @@ void Renderer::DrawCircles(std::span<const ecs::DebugCircle> circles)
   Fwog::EndRendering();
 }
 
-void Renderer::DrawParticles(const Fwog::Buffer& particles, const Fwog::Buffer& renderIndices)
+void Renderer::DrawParticles(const Fwog::Buffer& particles, const Fwog::Buffer& renderIndices, uint32_t maxParticles)
 {
-  (void)particles;
-  (void)renderIndices;
+  auto attachment0 = Fwog::RenderAttachment{ .texture = &_resources->frame.particle_hdr_r, .clearValue{.color{.ui = 0}}, .clearOnLoad = true };
+  auto attachment1 = Fwog::RenderAttachment{ .texture = &_resources->frame.particle_hdr_g, .clearValue{.color{.ui = 0}}, .clearOnLoad = true };
+  auto attachment2 = Fwog::RenderAttachment{ .texture = &_resources->frame.particle_hdr_g, .clearValue{.color{.ui = 0}}, .clearOnLoad = true };
+  auto attachments = { attachment0, attachment1, attachment2 };
+  Fwog::BeginRendering({ .colorAttachments = { attachments } });
+  Fwog::EndRendering();
+
+  Fwog::BeginCompute("Render particles");
+  {
+    Fwog::Cmd::BindComputePipeline(_resources->particlePipeline);
+    Fwog::Cmd::BindStorageBuffer(0, particles, 0, particles.Size());
+    Fwog::Cmd::BindStorageBuffer(1, renderIndices, 0, renderIndices.Size());
+    Fwog::Cmd::BindImage(0, _resources->frame.particle_hdr_r, 0);
+    Fwog::Cmd::BindImage(1, _resources->frame.particle_hdr_g, 0);
+    Fwog::Cmd::BindImage(2, _resources->frame.particle_hdr_b, 0);
+
+    uint32_t workgroups = (maxParticles + 63) / 64;
+    Fwog::Cmd::MemoryBarrier(Fwog::MemoryBarrierAccessBit::IMAGE_ACCESS_BIT | Fwog::MemoryBarrierAccessBit::SHADER_STORAGE_BIT);
+    Fwog::Cmd::Dispatch(workgroups, 1, 1);
+  }
+  Fwog::EndCompute();
+
+  auto sampler = Fwog::Sampler(Fwog::SamplerState{ .minFilter = Fwog::Filter::NEAREST, .magFilter = Fwog::Filter::NEAREST });
+  //auto attachment = Fwog::RenderAttachment{ &_resources->frame.output_hdr };
+  Fwog::BeginRendering({ .colorAttachments = {{ { &_resources->frame.output_hdr } }} });
+  {
+    Fwog::Cmd::BindGraphicsPipeline(_resources->particleResolvePipeline);
+    Fwog::Cmd::BindSampledImage(0, _resources->frame.particle_hdr_r, sampler);
+    Fwog::Cmd::BindSampledImage(1, _resources->frame.particle_hdr_g, sampler);
+    Fwog::Cmd::BindSampledImage(2, _resources->frame.particle_hdr_b, sampler);
+    Fwog::Cmd::Draw(3, 1, 0, 0);
+  }
+  Fwog::EndRendering();
+
+  // fuggit, I'm gonna resolve the final image here too
+  Fwog::BeginCompute("Tonemap");
+  {
+    Fwog::Cmd::BindComputePipeline(_resources->tonemapPipeline);
+    Fwog::Cmd::BindSampledImage(0, _resources->frame.output_hdr, sampler);
+    Fwog::Cmd::BindImage(0, _resources->frame.output_ldr, 0);
+
+    auto workgroups = (_resources->frame.output_ldr.Extent() + 7) / 8;
+    Fwog::Cmd::MemoryBarrier(Fwog::MemoryBarrierAccessBit::IMAGE_ACCESS_BIT);
+    Fwog::Cmd::Dispatch(workgroups.width, workgroups.height, 1);
+    Fwog::Cmd::MemoryBarrier(Fwog::MemoryBarrierAccessBit::FRAMEBUFFER_BIT);
+  }
+  Fwog::EndCompute();
+
+  Fwog::BlitTextureToSwapchain(_resources->frame.output_ldr,
+                               { 0, 0, 0 },
+                               { 0, 0, 0 },
+                               _resources->frame.output_ldr.Extent(),
+                               { _resources->frame.width, _resources->frame.height, 1 },
+                               Fwog::Filter::LINEAR);
 }

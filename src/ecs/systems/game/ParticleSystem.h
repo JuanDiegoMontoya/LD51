@@ -1,6 +1,7 @@
 #pragma once
 #include "ecs/systems/System.h"
 #include "ecs/events/AddParticles.h"
+#include "Input.h"
 #include <Fwog/Buffer.h>
 #include <Fwog/Pipeline.h>
 #include <memory>
@@ -21,7 +22,7 @@ namespace ecs
   private:
     Renderer* _renderer;
 
-    static constexpr std::uint32_t MAX_PARTICLES = 1'000'000;
+    static constexpr std::uint32_t MAX_PARTICLES = 5'000'000;
 
     // List(s) containing per-particle attributes
     std::unique_ptr<Fwog::Buffer> _particles;
@@ -37,6 +38,10 @@ namespace ecs
     Fwog::ComputePipeline _particleUpdate;
     Fwog::ComputePipeline _particleAdd;
 
+    float cursorX = 0;
+    float cursorY = 0;
+
     void HandleParticleAdd(AddParticles& e);
+    void HandleMousePosition(input::MousePositionEvent& e);
   };
 }

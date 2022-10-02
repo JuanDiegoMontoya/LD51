@@ -40,5 +40,5 @@ void main()
   }
 
   int particleIndex = tombstones.indices[indexIndex];
-  outParticles.list[index] = inParticles.list[particleIndex];
+  outParticles.list[particleIndex] = inParticles.list[index];
 }

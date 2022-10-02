@@ -105,6 +105,7 @@ namespace input
     glfwSetKeyCallback(window, InputAccess::KeyCallback);
     glfwSetCharCallback(window, InputAccess::CharCallback);
     glfwSetMonitorCallback(InputAccess::MonitorCallback);
+    glfwSetCursorPosCallback(window, InputAccess::CursorPosCallback);
 
     glfwSetWindowUserPointer(window, this);
   }
@@ -120,6 +121,14 @@ namespace input
     
     // this is where action events would get dispatched, if there are any
     glfwPollEvents();
+
+    int iframebufferWidth{};
+    int iframebufferHeight{};
+    glfwGetFramebufferSize(_window, &iframebufferWidth, &iframebufferHeight);
+    uint32_t framebufferWidth = static_cast<uint32_t>(iframebufferWidth);
+    uint32_t framebufferHeight = static_cast<uint32_t>(iframebufferHeight);
+
+    _eventBus->Publish(MousePositionEvent{ scrollOffset, cursorPosX, framebufferHeight - cursorPosY, framebufferWidth, framebufferHeight });
 
     // dispatch axis events
     for (auto&& [axis, dispatcher] : _axisBindings)

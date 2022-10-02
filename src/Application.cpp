@@ -22,6 +22,8 @@
 #include "ecs/components/core/Collider.h"
 #include "ecs/events/Collision.h"
 #include "ecs/components/DebugDraw.h"
+#include "ecs/events/AddParticles.h"
+#include <glm/packing.hpp>
 #include <stb_image.h>
 
 Application::Application(std::string title, ecs::Scene* scene, EventBus* eventBus)
@@ -87,27 +89,25 @@ void Application::Run()
   auto debugSystem = ecs::DebugSystem(_scene, _eventBus, _window, &renderer);
   auto particleSystem = ecs::ParticleSystem(_scene, _eventBus, &renderer);
 
-  int x{};
-  int y{};
-  int nc{};
-  stbi_set_flip_vertically_on_load(true);
-  auto* pixels = stbi_load("assets/textures/doge.png", &x, &y, &nc, 4);
-  auto texture = Fwog::Texture(Fwog::CreateTexture2D({ static_cast<uint32_t>(x), static_cast<uint32_t>(y) }, Fwog::Format::R8G8B8A8_SRGB));
-  texture.SubImage({ .dimension = Fwog::UploadDimension::TWO,
-                     .size = texture.Extent(),
-                     .format = Fwog::UploadFormat::RGBA,
-                     .type = Fwog::UploadType::UBYTE,
-                     .pixels = pixels });
+  // TODO: temp
+  std::vector<ecs::Particle> particles;
+  for (int x = 0; x < 5000; x++)
+  {
+    for (int y = 0; y < 1000; y++)
+    {
+      glm::vec4 em = { 1.0f, 2.0f, 1.0f, 1.0f };
+      ecs::Particle particle
+      {
+        .position = { x / 5000.0 - .5, y / 1000.0 - .5 },
+        .emissive = { glm::packHalf2x16({ em.r, em.g }), glm::packHalf2x16({ em.b, em.a }) },
+        .velocity = glm::packHalf2x16({ 0, 0 }),
+        .flags = 1
+      };
+      particles.push_back(particle);
+    }
+  }
 
-  ecs::Entity entity = _scene->CreateEntity("hello");
-  auto& transform = entity.AddComponent<ecs::Transform>();
-  transform.scale = { .25, .25 };
-  transform.translation = { 0, 0 };
-  transform.rotation = 0;
-  auto& sprite = entity.AddComponent<ecs::Sprite>();
-  sprite.texture = &texture;
-  sprite.tint = { 0, 255, 255, 255 };
-  entity.AddComponent<ecs::Collider>();
+  _eventBus->Publish(ecs::AddParticles{ .particles = particles });
 
   Timer timer;
   double simulationAccum = 0;
@@ -127,14 +127,15 @@ void Application::Run()
 
     // TODO: Add something to prevent the death spiral
     simulationAccum += dt;
-    while (simulationAccum > _simulationTick)
+    if (simulationAccum > _simulationTick)
     {
       _input->PollEvents(_simulationTick);
       lifetimeSystem.Update(_simulationTick);
       collisionSystem.Update(_simulationTick);
       particleSystem.Update(_simulationTick);
 
-      simulationAccum -= _simulationTick;
+      //simulationAccum -= _simulationTick;
+      simulationAccum = 0;
     }
 
     if (glfwGetKey(_window, GLFW_KEY_ESCAPE))
@@ -142,9 +143,9 @@ void Application::Run()
       glfwSetWindowShouldClose(_window, true);
     }
 
-    transform.rotation += float(3.14 * dt);
-
     renderingSystem.Update(dt);
+    particleSystem.Draw();
+
     debugSystem.Update(dt);
 
     glfwSwapBuffers(_window);

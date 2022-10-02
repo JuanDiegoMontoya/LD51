@@ -58,7 +58,7 @@ void main()
   {
     Particle particle = particles.list[index];
     vec2 velocity = unpackHalf2x16(particle.velocity) * .9995;
-    float accelMagnitude = uniforms.magnetism / max(1.0, distance(uniforms.cursorPosition, particle.position));
+    float accelMagnitude = uniforms.magnetism / max(3.0, distance(uniforms.cursorPosition, particle.position));
     vec2 acceleration = accelMagnitude * normalize(uniforms.cursorPosition - particle.position);
 
     if (particle.flags > 0)

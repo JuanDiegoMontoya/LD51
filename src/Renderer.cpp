@@ -128,6 +128,23 @@ struct FrameUniforms
   glm::mat4 viewProj;
 };
 
+struct BloomDownsampleUniforms
+{
+  glm::ivec2 sourceDim;
+  glm::ivec2 targetDim;
+  float sourceLod;
+};
+
+struct BloomUpsampleUniforms
+{
+  glm::ivec2 sourceDim;
+  glm::ivec2 targetDim;
+  float width;
+  float strength;
+  float sourceLod;
+  float targetLod;
+};
+
 struct Renderer::Resources
 {
   // resources that need to be recreated when the window resizes
@@ -137,6 +154,7 @@ struct Renderer::Resources
     uint32_t height{};
     Fwog::Texture output_ldr;
     Fwog::Texture output_hdr;
+    Fwog::Texture output_hdr_scratch;
     Fwog::Texture particle_hdr_r;
     Fwog::Texture particle_hdr_g;
     Fwog::Texture particle_hdr_b;
@@ -153,8 +171,13 @@ struct Renderer::Resources
   Fwog::ComputePipeline particlePipeline;
   Fwog::ComputePipeline tonemapPipeline;
   Fwog::GraphicsPipeline particleResolvePipeline;
+  Fwog::ComputePipeline bloomDownsampleLowPass;
+  Fwog::ComputePipeline bloomDownsample;
+  Fwog::ComputePipeline bloomUpsample;
   Fwog::TypedBuffer<SpriteUniforms> spritesUniformsBuffer;
   Fwog::TypedBuffer<FrameUniforms> frameUniformsBuffer;
+  Fwog::TypedBuffer<BloomDownsampleUniforms> bloomDownsampleUniformBuffer;
+  Fwog::TypedBuffer<BloomUpsampleUniforms> bloomUpsampleUniformBuffer;
 
   // for drawing debug boxes and circles
   Fwog::GraphicsPipeline primitivePipeline;
@@ -193,13 +216,16 @@ Renderer::Renderer(GLFWwindow* window)
     {
       .frame = {.width = framebufferWidth,
                 .height = framebufferHeight,
-                .output_ldr = Fwog::CreateTexture2D({framebufferWidth, framebufferHeight}, Fwog::Format::R8G8B8A8_UNORM),
-                .output_hdr = Fwog::CreateTexture2D({framebufferWidth, framebufferHeight}, Fwog::Format::R16G16B16A16_FLOAT),
+                .output_ldr = Fwog::CreateTexture2D({framebufferWidth, framebufferHeight}, Fwog::Format::R8G8B8A8_UNORM, "output_ldr"),
+                .output_hdr = Fwog::CreateTexture2DMip({framebufferWidth, framebufferHeight}, Fwog::Format::R16G16B16A16_FLOAT, 8, "output_hdr"),
+                .output_hdr_scratch = Fwog::CreateTexture2DMip({framebufferWidth / 2, framebufferHeight / 2}, Fwog::Format::R16G16B16A16_FLOAT, 8, "output_hdr_scratch"),
                 .particle_hdr_r = Fwog::CreateTexture2D({framebufferWidth, framebufferHeight}, Fwog::Format::R32_UINT),
                 .particle_hdr_g = Fwog::CreateTexture2D({framebufferWidth, framebufferHeight}, Fwog::Format::R32_UINT),
                 .particle_hdr_b = Fwog::CreateTexture2D({framebufferWidth, framebufferHeight}, Fwog::Format::R32_UINT) },
       .spritesUniformsBuffer = Fwog::TypedBuffer<SpriteUniforms>(1024, Fwog::BufferStorageFlag::DYNAMIC_STORAGE),
       .frameUniformsBuffer = Fwog::TypedBuffer<FrameUniforms>(Fwog::BufferStorageFlag::DYNAMIC_STORAGE),
+      .bloomDownsampleUniformBuffer = Fwog::TypedBuffer<BloomDownsampleUniforms>(Fwog::BufferStorageFlag::DYNAMIC_STORAGE),
+      .bloomUpsampleUniformBuffer = Fwog::TypedBuffer<BloomUpsampleUniforms>(Fwog::BufferStorageFlag::DYNAMIC_STORAGE),
       .boxVertexBuffer = Fwog::TypedBuffer<glm::vec2>(MakeBoxVertices()),
       .circleVertexBuffer = Fwog::TypedBuffer<glm::vec2>(MakeCircleVertices(CIRCLE_SEGMENTS)),
     });
@@ -275,11 +301,126 @@ Renderer::Renderer(GLFWwindow* window)
   auto tonemap_cs = Fwog::Shader(Fwog::PipelineStage::COMPUTE_SHADER, LoadFile("assets/shaders/bloom/TonemapAndDither.comp.glsl"));
   _resources->tonemapPipeline = Fwog::CompileComputePipeline({ .shader = &tonemap_cs });
   
+  auto bloom_downsampleLowPass_cs = Fwog::Shader(Fwog::PipelineStage::COMPUTE_SHADER, LoadFile("assets/shaders/bloom/DownsampleLowPass.comp.glsl"));
+  _resources->bloomDownsampleLowPass = Fwog::CompileComputePipeline({ .shader = &bloom_downsampleLowPass_cs });
+
+  auto bloom_downsample_cs = Fwog::Shader(Fwog::PipelineStage::COMPUTE_SHADER, LoadFile("assets/shaders/bloom/Downsample.comp.glsl"));
+  _resources->bloomDownsample = Fwog::CompileComputePipeline({ .shader = &bloom_downsample_cs });
+
+  auto bloom_upsample_cs = Fwog::Shader(Fwog::PipelineStage::COMPUTE_SHADER, LoadFile("assets/shaders/bloom/Upsample.comp.glsl"));
+  _resources->bloomUpsample = Fwog::CompileComputePipeline({ .shader = &bloom_upsample_cs });
 }
 
 Renderer::~Renderer()
 {
   delete _resources;
+}
+
+void Renderer::ApplyBloom(const Fwog::Texture& target, uint32_t passes, float strength, float width, const Fwog::Texture& scratchTexture)
+{
+  G_ASSERT_MSG(target.Extent().width >> passes > 0 && target.Extent().height >> passes > 0, "Bloom target is too small");
+
+  Fwog::SamplerState samplerState;
+  samplerState.minFilter = Fwog::Filter::LINEAR;
+  samplerState.magFilter = Fwog::Filter::LINEAR;
+  samplerState.mipmapFilter = Fwog::Filter::NEAREST;
+  samplerState.addressModeU = Fwog::AddressMode::MIRRORED_REPEAT;
+  samplerState.addressModeV = Fwog::AddressMode::MIRRORED_REPEAT;
+  samplerState.lodBias = 0;
+  samplerState.minLod = -1000;
+  samplerState.maxLod = 1000;
+  auto sampler = Fwog::Sampler(samplerState);
+
+  Fwog::BeginCompute("Bloom");
+  Fwog::Cmd::BindUniformBuffer(0, _resources->bloomDownsampleUniformBuffer, 0, _resources->bloomDownsampleUniformBuffer.Size());
+  const int local_size = 16;
+  for (uint32_t i = 0; i < passes; i++)
+  {
+    Fwog::Extent2D sourceDim{};
+    Fwog::Extent2D targetDim = target.Extent() >> (i + 1);
+    float sourceLod{};
+
+    const Fwog::Texture* sourceTex = nullptr;
+
+    // first pass, use downsampling with low-pass filter
+    if (i == 0)
+    {
+      Fwog::Cmd::BindComputePipeline(_resources->bloomDownsampleLowPass);
+
+      sourceLod = 0;
+      sourceTex = &target;
+      sourceDim = { target.Extent().width, target.Extent().height };
+    }
+    else
+    {
+      Fwog::Cmd::BindComputePipeline(_resources->bloomDownsample);
+
+      sourceLod = static_cast<float>(i - 1);
+      sourceTex = &scratchTexture;
+      sourceDim = target.Extent() >> i;
+    }
+
+    Fwog::Cmd::BindSampledImage(0, *sourceTex, sampler);
+    Fwog::Cmd::BindImage(0, scratchTexture, i);
+
+    BloomDownsampleUniforms uniforms
+    {
+      .sourceDim = { sourceDim.width, sourceDim.height },
+      .targetDim = { targetDim.width, targetDim.height },
+      .sourceLod = sourceLod
+    };
+    _resources->bloomDownsampleUniformBuffer.SubDataTyped(uniforms);
+
+    Fwog::Cmd::MemoryBarrier(Fwog::MemoryBarrierAccessBit::TEXTURE_FETCH_BIT | Fwog::MemoryBarrierAccessBit::IMAGE_ACCESS_BIT);
+    auto workgroups = (targetDim + local_size - 1) / local_size;
+    Fwog::Cmd::Dispatch(workgroups.width, workgroups.height, 1);
+  }
+
+  Fwog::Cmd::BindComputePipeline(_resources->bloomUpsample);
+  Fwog::Cmd::BindUniformBuffer(0, _resources->bloomUpsampleUniformBuffer, 0, _resources->bloomUpsampleUniformBuffer.Size());
+  for (int32_t i = passes - 1; i >= 0; i--)
+  {
+    Fwog::Extent2D sourceDim = target.Extent() >> (i + 1);
+    Fwog::Extent2D targetDim{};
+    const Fwog::Texture* targetTex = nullptr;
+    float realStrength = 1.0f;
+    uint32_t targetLod{};
+
+    // final pass
+    if (i == 0)
+    {
+      realStrength = strength;
+      targetLod = 0;
+      targetTex = &target;
+      targetDim = target.Extent();
+    }
+    else
+    {
+      targetLod = i - 1;
+      targetTex = &scratchTexture;
+      targetDim = target.Extent() >> i;
+    }
+
+    Fwog::Cmd::BindSampledImage(0, scratchTexture, sampler);
+    Fwog::Cmd::BindSampledImage(1, *targetTex, sampler);
+    Fwog::Cmd::BindImage(0, *targetTex, targetLod);
+
+    BloomUpsampleUniforms uniforms
+    {
+      .sourceDim = { sourceDim.width, sourceDim.height },
+      .targetDim = { targetDim.width, targetDim.height },
+      .width = width,
+      .strength = realStrength,
+      .sourceLod = static_cast<float>(i),
+      .targetLod = static_cast<float>(targetLod)
+    };
+    _resources->bloomUpsampleUniformBuffer.SubDataTyped(uniforms);
+
+    auto workgroups = (targetDim + local_size - 1) / local_size;
+    Fwog::Cmd::MemoryBarrier(Fwog::MemoryBarrierAccessBit::TEXTURE_FETCH_BIT | Fwog::MemoryBarrierAccessBit::IMAGE_ACCESS_BIT);
+    Fwog::Cmd::Dispatch(workgroups.width, workgroups.height, 1);
+  }
+  Fwog::EndCompute();
 }
 
 void Renderer::DrawBackground(const Fwog::Texture& texture)
@@ -471,6 +612,8 @@ void Renderer::DrawParticles(const Fwog::Buffer& particles, const Fwog::Buffer& 
     Fwog::Cmd::Draw(3, 1, 0, 0);
   }
   Fwog::EndRendering();
+
+  ApplyBloom(_resources->frame.output_hdr, 6, 1.0f / 64.0f, 1.0f, _resources->frame.output_hdr_scratch);
 
   // fuggit, I'm gonna resolve the final image here too
   Fwog::BeginCompute("Tonemap");

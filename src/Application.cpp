@@ -95,7 +95,7 @@ void Application::Run()
   {
     for (int y = 0; y < 1000; y++)
     {
-      glm::vec4 em = { 1.0f, 2.0f, 1.0f, 1.0f };
+      glm::vec4 em = { 0.1f, 0.4f, 0.1f, 1.0f };
       ecs::Particle particle
       {
         .position = { x / 5000.0 - .5, y / 1000.0 - .5 },

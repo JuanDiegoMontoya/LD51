@@ -45,5 +45,7 @@ public:
   struct Resources;
 
 private:
+  void ApplyBloom(const Fwog::Texture& target, uint32_t passes, float strength, float width, const Fwog::Texture& scratchTexture);
+
   Resources* _resources;
 };

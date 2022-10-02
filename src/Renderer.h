@@ -11,6 +11,7 @@ struct GLFWwindow;
 namespace Fwog
 {
   class Texture;
+  class Buffer;
 }
 
 struct RenderableSprite
@@ -38,6 +39,8 @@ public:
   void DrawLines(std::span<const ecs::DebugLine> lines);
   void DrawBoxes(std::span<const ecs::DebugBox> boxes);
   void DrawCircles(std::span<const ecs::DebugCircle> circles);
+
+  void DrawParticles(const Fwog::Buffer& particles, const Fwog::Buffer& renderIndices);
 
   struct Resources;
 

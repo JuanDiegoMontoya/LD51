@@ -1,6 +1,5 @@
 #pragma once
 #include "ecs/systems/System.h"
-#include "ecs/events/AddSprite.h"
 #include <Fwog/Texture.h>
 #include <memory>
 

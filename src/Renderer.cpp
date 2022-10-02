@@ -145,6 +145,7 @@ struct Renderer::Resources
   Frame frame;
   Fwog::GraphicsPipeline backgroundPipeline;
   Fwog::GraphicsPipeline spritePipeline;
+  Fwog::ComputePipeline particlePipeline;
   Fwog::TypedBuffer<SpriteUniforms> spritesUniformsBuffer;
   Fwog::TypedBuffer<FrameUniforms> frameUniformsBuffer;
 
@@ -192,7 +193,7 @@ Renderer::Renderer(GLFWwindow* window)
     });
 
   auto view = glm::mat4(1);
-  auto proj = glm::ortho<float>(-10 * _resources->frame.AspectRatio(), 10 * _resources->frame.AspectRatio(), -10, 10, -1, 1);
+  auto proj = glm::ortho<float>(-1 * _resources->frame.AspectRatio(), 1 * _resources->frame.AspectRatio(), -1, 1, -1, 1);
   auto viewproj = proj * view;
   _resources->frameUniformsBuffer.SubDataTyped({ viewproj });
 
@@ -249,6 +250,9 @@ Renderer::Renderer(GLFWwindow* window)
     .vertexInputState = { std::span(&linePosDesc, 1) },
     .colorBlendState = { .attachments = std::span(&colorBlend, 1) }
   });
+
+  //auto particle_cs = Fwog::Shader(Fwog::PipelineStage::COMPUTE_SHADER, LoadFile("assets/shaders/particles/RenderParticles.comp.glsl"));
+  //_resources->particlePipeline = Fwog::CompileComputePipeline({ .shader = &particle_cs });
 }
 
 Renderer::~Renderer()
@@ -259,7 +263,7 @@ Renderer::~Renderer()
 void Renderer::DrawBackground(const Fwog::Texture& texture)
 {
   G_ASSERT(texture.CreateInfo().imageType == Fwog::ImageType::TEX_2D);
-  Fwog::BeginSwapchainRendering({ .viewport = {.drawRect = {.offset{}, .extent{1280, 720}}},
+  Fwog::BeginSwapchainRendering({ .viewport = {.drawRect = {.offset{}, .extent{_resources->frame.width, _resources->frame.height}}},
                                   .clearColorOnLoad = true,
                                   .clearColorValue = {.f = {.3f, .8f, .2f, 1.f}} });
   Fwog::Cmd::BindGraphicsPipeline(_resources->backgroundPipeline);
@@ -309,7 +313,7 @@ void Renderer::DrawSprites(std::vector<RenderableSprite> sprites)
 
   _resources->spritesUniformsBuffer.SubData(std::span(spritesUniforms), 0);
 
-  Fwog::BeginSwapchainRendering({ .viewport = {.drawRect = {.offset{}, .extent{1280, 720} } } });
+  Fwog::BeginSwapchainRendering({ .viewport = {.drawRect = {.offset{}, .extent{_resources->frame.width, _resources->frame.height} } } });
   Fwog::Cmd::BindGraphicsPipeline(_resources->spritePipeline);
   Fwog::Cmd::BindUniformBuffer(0, _resources->frameUniformsBuffer, 0, _resources->frameUniformsBuffer.Size());
   Fwog::Cmd::BindStorageBuffer(0, _resources->spritesUniformsBuffer, 0, _resources->spritesUniformsBuffer.Size());
@@ -341,7 +345,7 @@ void Renderer::DrawLines(std::span<const ecs::DebugLine> lines)
   // this buffer doesn't need to be created every frame
   auto vertexBuffer = Fwog::Buffer(lines);
 
-  Fwog::BeginSwapchainRendering({ .viewport = {.drawRect = {.offset{}, .extent{1280, 720}}},
+  Fwog::BeginSwapchainRendering({ .viewport = {.drawRect = {.offset{}, .extent{_resources->frame.width, _resources->frame.height}}},
                                   .clearColorOnLoad = false });
   Fwog::Cmd::BindGraphicsPipeline(_resources->linesPipeline);
   Fwog::Cmd::BindUniformBuffer(0, _resources->frameUniformsBuffer, 0, _resources->frameUniformsBuffer.Size());
@@ -370,7 +374,7 @@ void Renderer::DrawBoxes(std::span<const ecs::DebugBox> boxes)
 
   auto instanceBuffer = Fwog::Buffer(std::span(primitives));
 
-  Fwog::BeginSwapchainRendering({ .viewport = {.drawRect = {.offset{}, .extent{1280, 720}}},
+  Fwog::BeginSwapchainRendering({ .viewport = {.drawRect = {.offset{}, .extent{_resources->frame.width, _resources->frame.height}}},
                                   .clearColorOnLoad = false });
   Fwog::Cmd::BindGraphicsPipeline(_resources->primitivePipeline);
   Fwog::Cmd::BindUniformBuffer(0, _resources->frameUniformsBuffer, 0, _resources->frameUniformsBuffer.Size());
@@ -400,7 +404,7 @@ void Renderer::DrawCircles(std::span<const ecs::DebugCircle> circles)
 
   auto instanceBuffer = Fwog::Buffer(std::span(primitives));
 
-  Fwog::BeginSwapchainRendering({ .viewport = {.drawRect = {.offset{}, .extent{1280, 720}}},
+  Fwog::BeginSwapchainRendering({ .viewport = {.drawRect = {.offset{}, .extent{_resources->frame.width, _resources->frame.height}}},
                                   .clearColorOnLoad = false });
   Fwog::Cmd::BindGraphicsPipeline(_resources->primitivePipeline);
   Fwog::Cmd::BindUniformBuffer(0, _resources->frameUniformsBuffer, 0, _resources->frameUniformsBuffer.Size());
@@ -408,4 +412,10 @@ void Renderer::DrawCircles(std::span<const ecs::DebugCircle> circles)
   Fwog::Cmd::BindVertexBuffer(0, _resources->circleVertexBuffer, 0, sizeof(glm::vec2));
   Fwog::Cmd::Draw(CIRCLE_SEGMENTS + 1, static_cast<uint32_t>(circles.size()), 0, 0);
   Fwog::EndRendering();
+}
+
+void Renderer::DrawParticles(const Fwog::Buffer& particles, const Fwog::Buffer& renderIndices)
+{
+  (void)particles;
+  (void)renderIndices;
 }

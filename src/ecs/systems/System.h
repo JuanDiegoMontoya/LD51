@@ -20,6 +20,7 @@ namespace ecs
     System& operator=(System&&) = delete;
 
     virtual void Update(double dt) = 0;
+    virtual void Draw() {}
 
   protected:
     Scene* _scene;

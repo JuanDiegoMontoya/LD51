@@ -20,7 +20,7 @@ set(LD51_source_files
 	"src/Input.cpp"
 	"src/ecs/systems/RenderingSystem.cpp"
 	"src/ecs/systems/DebugSystem.cpp"
-)
+ "src/ecs/systems/game/ParticleSystem.cpp")
 
 set(LD51_header_files
 	"src/GAssert.h"
@@ -36,7 +36,7 @@ set(LD51_header_files
 	"src/ecs/systems/System.h"
 	"src/ecs/components/core/Transform.h"
 	"src/ecs/components/core/Sprite.h"
-	"src/ecs/events/AddSprite.h"
+	
 	"src/ecs/components/core/Collider.h"
 	"src/ecs/systems/core/CollisionSystem.h"
 	"src/ecs/events/Collision.h"
@@ -47,7 +47,7 @@ set(LD51_header_files
 	"src/ecs/systems/RenderingSystem.h"
 	"src/ecs/systems/DebugSystem.h"
 	"src/ecs/components/DebugDraw.h"
-)
+ "src/ecs/systems/game/ParticleSystem.h" "src/ecs/events/AddParticles.h")
 
 add_executable(LD51_game
 	${LD51_source_files}

@@ -377,6 +377,7 @@ void Application::Run()
   /////////////////////////////////////// GAMEPLAY VARS /////////////////////////
   ///////////////////////////////////////////////////////////////////////////////
   ///////////////////////////////////////////////////////////////////////////////
+  double gameTime = 0;
   bool sandboxMode = false;
   bool screenshotMode = false;
   GameState gameState = GameState::MENU;
@@ -525,6 +526,7 @@ void Application::Run()
           }
         }
 
+        gameTime += dt;
         particleSystem.Update(_simulationTick);
 
         simulationAccum -= _simulationTick;
@@ -563,7 +565,7 @@ void Application::Run()
       if (survived == 0)
       {
         ImGui::Text("Your flock has died.");
-        ImGui::Text("There was still.");
+        ImGui::Text("You had %d seconds to go!", int(120 - gameTime));
       }
       else
       {

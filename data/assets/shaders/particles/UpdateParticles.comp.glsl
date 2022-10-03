@@ -110,7 +110,7 @@ void main()
         if (ppos.x > bpos.x - bscl.x && ppos.y > bpos.y - bscl.y &&
             ppos.x < bpos.x + bscl.x && ppos.y < bpos.y + bscl.y)
         {
-          particle.emissive.x = packHalf2x16(vec2(2.8, .1));
+          particle.emissive.x = packHalf2x16(vec2(8.0, .1));
           particle.emissive.y = packHalf2x16(vec2(.1, .0));
           //vec2 refldir = reflect(-normalize(velocity), vec2(normal));
           //velocity = refldir * length(velocity) * 2;

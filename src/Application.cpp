@@ -378,6 +378,7 @@ void Application::Run()
   ///////////////////////////////////////////////////////////////////////////////
   ///////////////////////////////////////////////////////////////////////////////
   bool sandboxMode = false;
+  bool screenshotMode = false;
   GameState gameState = GameState::MENU;
   int startParticles = 1000;
   auto milestoneTracker = MilestoneTracker();
@@ -388,7 +389,9 @@ void Application::Run()
   milestoneTracker.Reset(CreateDefaultMilestones(startParticles, _eventBus, _scene, &particleSystem));
 
   struct Pause {};
+  struct ScreenshotMode {};
   _input->AddActionBinding<Pause>(input::ActionInput{ .type{ input::Button::KEY_ESCAPE} });
+  _input->AddActionBinding<ScreenshotMode>(input::ActionInput{ .type{ input::Button::KEY_F1} });
 
   struct Handler
   {
@@ -403,12 +406,19 @@ void Application::Run()
       }
     }
 
+    void ScreenshotModeHandler(ScreenshotMode&)
+    {
+      screenshotMode = !screenshotMode;
+    }
+
     GameState& gameState;
+    bool& screenshotMode;
   };
 
-  Handler handler{gameState};
+  Handler handler{gameState, screenshotMode};
 
   _eventBus->Subscribe(&handler, &Handler::PauseHandler);
+  _eventBus->Subscribe(&handler, &Handler::ScreenshotModeHandler);
 
   Timer timer;
   double simulationAccum = 0;
@@ -626,8 +636,11 @@ void Application::Run()
 
     glDisable(GL_FRAMEBUFFER_SRGB);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    if (!screenshotMode)
+    {
+      ImGui::Render();
+      ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    }
     ImGui::EndFrame();
 
     glfwSwapBuffers(_window);

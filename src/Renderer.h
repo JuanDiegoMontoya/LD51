@@ -35,6 +35,8 @@ public:
   void DrawBackground(const Fwog::Texture& texture);
   void DrawSprites(std::vector<RenderableSprite> sprites);
 
+  void ClearHDR();
+
   // debug drawing utilities
   void DrawLines(std::span<const ecs::DebugLine> lines);
   void DrawBoxes(std::span<const ecs::DebugBox> boxes);

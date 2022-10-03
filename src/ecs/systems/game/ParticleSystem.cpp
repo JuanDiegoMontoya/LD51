@@ -6,6 +6,7 @@
 #include <Fwog/Shader.h>
 #include <Fwog/Rendering.h>
 #include <vector>
+#include <glad/gl.h>
 
 namespace ecs
 {
@@ -16,18 +17,45 @@ namespace ecs
       float dt;
       float magnetism;
       glm::vec2 cursorPosition;
+      float friction;
+      float accelerationConstant;
+      float accelerationMinDistance;
     };
   }
 
   ParticleSystem::ParticleSystem(Scene* scene, EventBus* eventBus, Renderer* renderer)
     : System(scene, eventBus), _renderer(renderer)
   {
+    Reset(true, 100'000);
+
+    auto update = Fwog::Shader(Fwog::PipelineStage::COMPUTE_SHADER, LoadFile("assets/shaders/particles/UpdateParticles.comp.glsl"));
+    auto add = Fwog::Shader(Fwog::PipelineStage::COMPUTE_SHADER, LoadFile("assets/shaders/particles/AddParticles.comp.glsl"));
+    
+    _particleUpdate = Fwog::CompileComputePipeline({ .shader = &update });
+    _particleAdd = Fwog::CompileComputePipeline({ .shader = &add });
+
+    _eventBus->Subscribe(this, &ParticleSystem::HandleParticleAdd);
+    _eventBus->Subscribe(this, &ParticleSystem::HandleMousePosition);
+  }
+
+  void ParticleSystem::Reset(bool hard, uint32_t maxParticles)
+  {
+    MAX_PARTICLES = maxParticles;
+    // reset to default
+    if (hard)
+    {
+      magnetism = 1.0f;
+      friction = 0.01f;
+      accelerationConstant = 1.0f;
+      accelerationMinDistance = 2.0f;
+    }
+
     _particles = std::make_unique<Fwog::Buffer>(sizeof(Particle) * MAX_PARTICLES, Fwog::BufferStorageFlag::NONE);
     // +1 for int
     std::vector<int> tombstones;
     tombstones.reserve(MAX_PARTICLES + 1);
     tombstones.push_back(MAX_PARTICLES);
-    for (int i = 0; i < MAX_PARTICLES; i++)
+    for (uint32_t i = 0; i < MAX_PARTICLES; i++)
     {
       tombstones.push_back(i);
     }
@@ -39,15 +67,6 @@ namespace ecs
     constexpr int32_t zero = 0;
     _particles->ClearSubData(0, _particles->Size(), Fwog::Format::R32_SINT, Fwog::UploadFormat::R, Fwog::UploadType::SINT, &zero);
     _renderIndices->ClearSubData(0, sizeof(int32_t), Fwog::Format::R32_SINT, Fwog::UploadFormat::R, Fwog::UploadType::SINT, &zero);
-
-    auto update = Fwog::Shader(Fwog::PipelineStage::COMPUTE_SHADER, LoadFile("assets/shaders/particles/UpdateParticles.comp.glsl"));
-    auto add = Fwog::Shader(Fwog::PipelineStage::COMPUTE_SHADER, LoadFile("assets/shaders/particles/AddParticles.comp.glsl"));
-    
-    _particleUpdate = Fwog::CompileComputePipeline({ .shader = &update });
-    _particleAdd = Fwog::CompileComputePipeline({ .shader = &add });
-
-    _eventBus->Subscribe(this, &ParticleSystem::HandleParticleAdd);
-    _eventBus->Subscribe(this, &ParticleSystem::HandleMousePosition);
   }
 
   void ParticleSystem::Update(double dt)
@@ -77,8 +96,11 @@ namespace ecs
       Uniforms uniforms
       {
         .dt = static_cast<float>(dt),
-        .magnetism = 1.0f,
-        .cursorPosition = { cursorX, cursorY }
+        .magnetism = magnetism,
+        .cursorPosition = { cursorX, cursorY },
+        .friction = friction,
+        .accelerationConstant = accelerationConstant,
+        .accelerationMinDistance = accelerationMinDistance,
       };
       _uniforms->SubData(uniforms, 0);
 
@@ -117,12 +139,20 @@ namespace ecs
       circles.push_back(circle);
     }
 
+    _renderer->ClearHDR();
+
     _renderer->DrawLines(lines);
     _renderer->DrawBoxes(boxes);
     _renderer->DrawCircles(circles);
 
-
     _renderer->DrawParticles(*_particles, *_renderIndices, MAX_PARTICLES);
+  }
+
+  std::uint32_t ParticleSystem::GetNumParticles()
+  {
+    int32_t size{};
+    glGetNamedBufferSubData(_tombstones->Handle(), 0, sizeof(int32_t), &size);
+    return MAX_PARTICLES - size;
   }
 
   void ParticleSystem::HandleParticleAdd(AddParticles& e)

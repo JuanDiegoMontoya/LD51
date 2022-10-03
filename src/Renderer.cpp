@@ -30,7 +30,7 @@ static void GLAPIENTRY glErrorCallback(
   const GLchar* message,
   [[maybe_unused]] const void* userParam)
 {
-  if (id == 131169 || id == 131185 || id == 131218 || id == 131204 || id == 0)
+  if (id == 131169 || id == 131185 || id == 131218 || id == 131204 || id == 131186 || id == 0)
     return;
 
   std::stringstream errStream;
@@ -506,6 +506,13 @@ void Renderer::DrawSprites(std::vector<RenderableSprite> sprites)
   Fwog::EndRendering();
 }
 
+void Renderer::ClearHDR()
+{
+  auto attachment0 = Fwog::RenderAttachment{ .texture = &_resources->frame.output_hdr, .clearValue{.color{.f = 0}}, .clearOnLoad = true };
+  Fwog::BeginRendering({ .name = "clear", .colorAttachments = {{attachment0}} });
+  Fwog::EndRendering();
+}
+
 void Renderer::DrawLines(std::span<const ecs::DebugLine> lines)
 {
   if (lines.empty())
@@ -548,7 +555,7 @@ void Renderer::DrawBoxes(std::span<const ecs::DebugBox> boxes)
   //Fwog::BeginSwapchainRendering({ .viewport = {.drawRect = {.offset{}, .extent{_resources->frame.width, _resources->frame.height}}},
   //                                .clearColorOnLoad = false });
 
-  auto attachment0 = Fwog::RenderAttachment{ .texture = &_resources->frame.output_hdr, .clearValue{.color{.f = 0}}, .clearOnLoad = true };
+  auto attachment0 = Fwog::RenderAttachment{ .texture = &_resources->frame.output_hdr };
   Fwog::BeginRendering({ .name = "debug boxes", .colorAttachments = {{attachment0}}});
   {
     Fwog::Cmd::BindGraphicsPipeline(_resources->primitivePipeline);
@@ -597,6 +604,9 @@ void Renderer::DrawParticles(const Fwog::Buffer& particles, const Fwog::Buffer& 
   auto attachment2 = Fwog::RenderAttachment{ .texture = &_resources->frame.particle_hdr_b, .clearValue{.color{.ui = 0}}, .clearOnLoad = true };
   auto attachments = { attachment0, attachment1, attachment2 };
   
+  // dumb hack to prevent warnings
+  glUseProgram(static_cast<GLuint>(_resources->backgroundPipeline.id));
+  glDisable(GL_BLEND);
   Fwog::BeginRendering({ .colorAttachments = { attachments } });
   Fwog::EndRendering();
 
@@ -616,13 +626,14 @@ void Renderer::DrawParticles(const Fwog::Buffer& particles, const Fwog::Buffer& 
   Fwog::EndCompute();
 
   auto sampler = Fwog::Sampler(Fwog::SamplerState{ .minFilter = Fwog::Filter::NEAREST, .magFilter = Fwog::Filter::NEAREST });
-  //auto attachment = Fwog::RenderAttachment{ &_resources->frame.output_hdr };
-  Fwog::BeginRendering({ .colorAttachments = {{ { &_resources->frame.output_hdr } }} });
+  auto attachment = Fwog::RenderAttachment{ .texture = &_resources->frame.output_hdr };
+  Fwog::BeginRendering({ .name = "Resolve particles", .colorAttachments = {{ attachment }} });
   {
     Fwog::Cmd::BindGraphicsPipeline(_resources->particleResolvePipeline);
     Fwog::Cmd::BindSampledImage(0, _resources->frame.particle_hdr_r, sampler);
     Fwog::Cmd::BindSampledImage(1, _resources->frame.particle_hdr_g, sampler);
     Fwog::Cmd::BindSampledImage(2, _resources->frame.particle_hdr_b, sampler);
+    Fwog::Cmd::MemoryBarrier(Fwog::MemoryBarrierAccessBit::TEXTURE_FETCH_BIT);
     Fwog::Cmd::Draw(3, 1, 0, 0);
   }
   Fwog::EndRendering();

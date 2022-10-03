@@ -15,14 +15,22 @@ namespace ecs
   public:
     ParticleSystem(Scene* scene, EventBus* eventBus, Renderer* renderer);
 
+    void Reset(bool hard, uint32_t maxParticles);
+
     void Update(double dt) override;
 
     void Draw() override;
 
+    std::uint32_t GetNumParticles();
+
+    std::uint32_t MAX_PARTICLES;
+    float magnetism;
+    float friction;
+    float accelerationConstant;
+    float accelerationMinDistance;
+
   private:
     Renderer* _renderer;
-
-    static constexpr std::uint32_t MAX_PARTICLES = 5'000'000;
 
     // List(s) containing per-particle attributes
     std::unique_ptr<Fwog::Buffer> _particles;

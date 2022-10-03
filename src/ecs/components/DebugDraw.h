@@ -19,6 +19,7 @@ namespace ecs
     float rotation = 0;
     glm::vec2 scale = { 0, 0 };
     glm::uvec2 color16f = { 0, 0 };
+    bool active = false; // if true, can kill particles (hack)
   };
 
   struct DebugCircle

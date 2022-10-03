@@ -28,4 +28,17 @@ namespace ecs
     float radius = 1;
     glm::uvec2 color16f = { 0, 0 };
   };
+
+  struct Flicker
+  {
+    double timeLeft = 0;
+  };
+
+  struct Movement
+  {
+    double period = 0;
+    double accum = 0;
+    glm::vec2 posA = { 0, 0 };
+    glm::vec2 posB = { 0, 0 };
+  };
 }

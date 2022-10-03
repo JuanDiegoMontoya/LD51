@@ -69,6 +69,12 @@ namespace ecs
       return _scene->Registry().all_of<Ts...>(_entityHandle);
     }
 
+    template<typename... Ts>
+    void RemoveComponents()
+    {
+      _scene->Registry().remove<Ts...>(_entityHandle);
+    }
+
   private:
     Scene* _scene = nullptr;
     entt::entity _entityHandle = entt::null;

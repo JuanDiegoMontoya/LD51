@@ -5,7 +5,7 @@ struct Particle
   vec2 position;
   uvec2 emissive; // packed 16-bit float RGBA
   uint velocity; // packed 16-bit float XY
-  uint flags;
+  float lifetime;
 };
 
 layout(std430, binding = 0) writeonly restrict buffer ParticlesBuffer
@@ -15,7 +15,7 @@ layout(std430, binding = 0) writeonly restrict buffer ParticlesBuffer
 
 layout(std430, binding = 1) coherent restrict buffer TombstonesBuffer
 {
-  coherent int size;
+  int size;
   int indices[];
 }tombstones;
 

@@ -29,6 +29,9 @@ namespace ecs
     float accelerationConstant;
     float accelerationMinDistance;
 
+    float cursorX = 0;
+    float cursorY = 0;
+
   private:
     Renderer* _renderer;
 
@@ -45,9 +48,6 @@ namespace ecs
 
     Fwog::ComputePipeline _particleUpdate;
     Fwog::ComputePipeline _particleAdd;
-
-    float cursorX = 0;
-    float cursorY = 0;
 
     void HandleParticleAdd(AddParticles& e);
     void HandleMousePosition(input::MousePositionEvent& e);

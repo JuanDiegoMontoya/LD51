@@ -41,6 +41,7 @@ void main()
     return;
   
   vec4 color = vec4(unpackHalf2x16(particle.emissive.x), unpackHalf2x16(particle.emissive.y));
+  color.b *= color.w;
   if (particle.lifetime < 1.0) color *= particle.lifetime;
   uvec4 colorQuantized = uvec4(color * 256.0 + 0.5);
   imageAtomicAdd(i_target_r, uv, colorQuantized.r);

@@ -20,13 +20,13 @@
 #include <queue>
 #include <functional>
 
-// temporary includes
 #include "ecs/Entity.h"
 #include "ecs/components/core/Sprite.h"
 #include "ecs/components/core/Transform.h"
 #include "ecs/components/DebugDraw.h"
 #include "ecs/events/AddParticles.h"
 #include <glm/packing.hpp>
+#include <glm/integer.hpp>
 #include <stb_image.h>
 
 struct Milestone
@@ -76,76 +76,234 @@ struct MilestoneTracker
   std::queue<Milestone> _milestones;
 };
 
-std::queue<Milestone> CreateDefaultMilestones(int startingParticles, EventBus* eventBus, ecs::Scene* scene)
+glm::vec2 Hammersley(uint32_t i, uint32_t N)
+{
+  return glm::vec2(
+    float(i) / float(N),
+    float(glm::bitfieldReverse(i)) * 2.3283064365386963e-10
+  );
+}
+
+void MakeParticles(EventBus* eventBus, uint32_t count, glm::vec2 position, float scaleColor, glm::vec4 baseColor = { 0.1f, 0.4f, 0.1f, 1.0f })
+{
+  std::vector<ecs::Particle> particles;
+  for (uint32_t i = 0; i < count; i++)
+  {
+    auto xi = Hammersley(i + 1, count);
+    float r = xi.x * 0.5f;
+    float theta = xi.y * 6.283f;
+    r *= .125;
+    r = sqrtf(r);
+
+    glm::vec2 pos = position + glm::vec2(r * cos(theta), r * sin(theta));
+    pos = glm::clamp(pos, glm::vec2(-1), glm::vec2(1));
+    glm::vec4 em = baseColor;
+    em = em * scaleColor;
+    ecs::Particle particle
+    {
+      .position = pos,
+      .emissive = { glm::packHalf2x16({ em.r, em.g }), glm::packHalf2x16({ em.b, em.a }) },
+      .velocity = glm::packHalf2x16({ 0, 0 }),
+      .lifetime = 9999
+    };
+    particles.push_back(particle);
+  }
+
+  eventBus->Publish(ecs::AddParticles{ .particles = std::move(particles) });
+}
+
+void MakeStaticWall(ecs::Scene* scene, glm::vec2 position, glm::vec2 scale)
+{
+  auto ee = scene->CreateEntity("wall");
+  auto& dbox = ee.AddComponent<ecs::DebugBox>();
+  glm::vec4 emissive2 = { 0, 200, 0, 0 };
+  dbox.color16f.x = glm::packHalf2x16({ emissive2.x, emissive2.y });
+  dbox.color16f.y = glm::packHalf2x16({ emissive2.z, emissive2.w });
+  dbox.scale = scale;
+  dbox.translation = position;
+  dbox.rotation = 0;
+  dbox.active = false;
+  ee.AddComponent<ecs::Flicker>().timeLeft = 3;
+}
+
+void MakeMovingWall(ecs::Scene* scene, glm::vec2 posA, glm::vec2 posB, double period, glm::vec2 scale)
+{
+  auto ee = scene->CreateEntity("wall");
+  auto& dbox = ee.AddComponent<ecs::DebugBox>();
+  glm::vec4 emissive2 = { 0, 200, 0, 0 };
+  dbox.color16f.x = glm::packHalf2x16({ emissive2.x, emissive2.y });
+  dbox.color16f.y = glm::packHalf2x16({ emissive2.z, emissive2.w });
+  dbox.scale = scale;
+  dbox.translation = { 0, 0 };
+  dbox.rotation = 0;
+  dbox.active = false;
+  ee.AddComponent<ecs::Flicker>().timeLeft = 3;
+  auto& move = ee.AddComponent<ecs::Movement>();
+  move.period = period;
+  move.posA = posA;
+  move.posB = posB;
+}
+
+std::queue<Milestone> CreateDefaultMilestones(int startParticles, 
+                                              EventBus* eventBus, 
+                                              ecs::Scene* scene, 
+                                              ecs::ParticleSystem* particleSystem)
 {
   std::queue<Milestone> milestones;
 
-  Milestone milestone0;
-  milestone0.time = 0;
-  milestone0.spawnMilestone = [eventBus, scene, startingParticles]
-  {
-    std::vector<ecs::Particle> particles;
-    for (int x = 0; x < 5000; x++)
+  constexpr int interval = 10;
+
+  milestones.push(Milestone
     {
-      for (int y = 0; y < 1000; y++)
+      .time = 0,
+      .spawnMilestone = [=]
       {
-        glm::vec4 em = { 0.1f * (y / 500.0f), 0.4f * (x / 2500.0f), 0.1f, 1.0f };
-        ecs::Particle particle
-        {
-          .position = { x / 5000.0 - .5, y / 1000.0 - .5 },
-          .emissive = { glm::packHalf2x16({ em.r, em.g }), glm::packHalf2x16({ em.b, em.a }) },
-          .velocity = glm::packHalf2x16({ 0, 0 }),
-          .lifetime = 9999
-        };
-        particles.push_back(particle);
+        MakeParticles(eventBus, startParticles, { particleSystem->cursorX, particleSystem->cursorY}, 100);
+
+        // Load-bearing wall: not having at least ONE wall somehow causes nothing to render and I don't know why
+        MakeStaticWall(scene, { 123456, 123456 }, { .01, .01 });
+      } });
+
+  milestones.push(Milestone
+    {
+      .time = interval,
+      .spawnMilestone = [=]
+      {
+        MakeParticles(eventBus, particleSystem->GetNumParticles(), { particleSystem->cursorX, particleSystem->cursorY}, 75);
+
+        MakeStaticWall(scene, { 0, -1 }, { 2.1, .03 });
+      } });
+
+  milestones.push(Milestone
+    {
+      .time = interval,
+      .spawnMilestone = [=]
+      {
+        MakeParticles(eventBus, particleSystem->GetNumParticles(), { particleSystem->cursorX, particleSystem->cursorY}, 50);
+
+        MakeStaticWall(scene, { 0, 1 }, { 2.1, .03 });
+      } });
+
+  milestones.push(Milestone
+    {
+      .time = interval,
+      .spawnMilestone = [=]
+      {
+        MakeParticles(eventBus, particleSystem->GetNumParticles(), { particleSystem->cursorX, particleSystem->cursorY}, 25, { .4, .2, .1, 0 });
+
+        MakeMovingWall(scene, { -1.5, 0 }, { 1.5, 0 }, 10, { .25, .25 });
+      } });
+
+  milestones.push(Milestone
+    {
+      .time = interval,
+      .spawnMilestone = [=]
+      {
+        MakeParticles(eventBus, particleSystem->GetNumParticles(), { particleSystem->cursorX, particleSystem->cursorY}, 12, { .4, .2, .1, 0 });
+
+        MakeMovingWall(scene, { 0, -1.5 }, { 0, 1.5 }, 10, { .25, .25 });
+      } });
+
+  milestones.push(Milestone
+    {
+      .time = interval,
+      .spawnMilestone = [=]
+      {
+        MakeParticles(eventBus, particleSystem->GetNumParticles(), { particleSystem->cursorX, particleSystem->cursorY}, 10, { .4, .2, .1, 0 });
+
+        MakeStaticWall(scene, { -1, 0 }, { .03, 2.1 });
+        MakeStaticWall(scene, { 1, 0 }, { .03, 2.1});
+      } });
+
+  milestones.push(Milestone
+    {
+      .time = interval,
+      .spawnMilestone = [=]
+      {
+        MakeParticles(eventBus, particleSystem->GetNumParticles(), { particleSystem->cursorX, particleSystem->cursorY}, 10, { .1, .2, .4, 0 });
+
+        MakeMovingWall(scene, { -.75, 0 }, { -1.11, 0 }, 10, { .4, 2.1 });
+        MakeMovingWall(scene, { 1.11, 0 }, { .75, 0 }, 10, { .4, 2.1 });
+      } });
+
+  milestones.push(Milestone
+    {
+      .time = interval,
+      .spawnMilestone = [=]
+      {
+        MakeParticles(eventBus, particleSystem->GetNumParticles(), { particleSystem->cursorX, particleSystem->cursorY}, 10, { .1, .2, .4, 0 });
+
+        MakeMovingWall(scene, { 0, -.75 }, { 0, -1.11 }, 10, { 2.1, .4 });
+        MakeMovingWall(scene, { 0, 1.11 }, { 0, .75 }, 10, { 2.1, .4 });
+      } });
+
+  milestones.push(Milestone
+    {
+      .time = interval,
+      .spawnMilestone = [=]
+      {
+        MakeParticles(eventBus, particleSystem->GetNumParticles(), { particleSystem->cursorX, particleSystem->cursorY}, 10, { .1, .2, .4, 0 });
+
+        MakeMovingWall(scene, { -.25, -.25 }, { .25, -.25 }, 8, { .125, .125 });
+        MakeMovingWall(scene, { -.25, -.25 }, { -.25, .25 }, 8, { .125, .125 });
+        MakeMovingWall(scene, { .25, .25 }, { -.25, .25 }, 8, { .125, .125 });
+        MakeMovingWall(scene, { .25, .25 }, { .25, -.25 }, 8, { .125, .125 });
       }
-    }
+    });
 
-    auto e = scene->CreateEntity("wall");
-    auto& dbox = e.AddComponent<ecs::DebugBox>();
-    glm::vec4 emissive = { 200, 0, 0, 0 };
-    dbox.color16f.x = glm::packHalf2x16({ emissive.x, emissive.y });
-    dbox.color16f.y = glm::packHalf2x16({ emissive.z, emissive.w });
-    dbox.scale = { .25, .25 };
-    dbox.translation = { .5, 0 };
-    dbox.rotation = 0;
+  milestones.push(Milestone
+    {
+      .time = interval,
+      .spawnMilestone = [=]
+      {
+        MakeParticles(eventBus, particleSystem->GetNumParticles(), { particleSystem->cursorX, particleSystem->cursorY}, 10, { .5, .1, .5, 0 });
 
-    eventBus->Publish(ecs::AddParticles{ .particles = particles });
-  };
-  milestones.push(milestone0);
+        MakeStaticWall(scene, { 0, 0 }, { .125, .125 });
+      }
+    });
+
+  milestones.push(Milestone
+    {
+      .time = interval,
+      .spawnMilestone = [=]
+      {
+        MakeParticles(eventBus, particleSystem->GetNumParticles(), { particleSystem->cursorX, particleSystem->cursorY}, 5, { .5, .1, .5, 0 });
+
+        MakeMovingWall(scene, { 0, -2 }, { 0, 2 }, 10, { .125, 1 });
+      }
+    });
+
+  milestones.push(Milestone
+    {
+      .time = interval,
+      .spawnMilestone = [=]
+      {
+        MakeParticles(eventBus, particleSystem->GetNumParticles(), { particleSystem->cursorX, particleSystem->cursorY}, 5, { .5, .1, .5, 0 });
+
+        MakeMovingWall(scene, { -1, 0 }, { 2, 0 }, 10, { 1, .125 });
+      }
+    });
+
+  milestones.push(Milestone
+    {
+      .time = interval,
+      .spawnMilestone = [=]
+      {
+        MakeParticles(eventBus, particleSystem->GetNumParticles(), { particleSystem->cursorX, particleSystem->cursorY}, 5, { .2, .2, .2, 0 });
+        scene->Registry().clear();
+        MakeStaticWall(scene, { 123456, 123456 }, { .01, .01 });
+      } });
+
+  milestones.push(Milestone
+    {
+      .time = interval,
+      .spawnMilestone = [=]
+      {
+      // final milestone
+      }
+    });
 
   return milestones;
-}
-
-void SpawnParticles()
-{
-  //std::vector<ecs::Particle> particles;
-  //for (int x = 0; x < 5000; x++)
-  //{
-  //  for (int y = 0; y < 1000; y++)
-  //  {
-  //    glm::vec4 em = { 0.1f * (y / 500.0f), 0.4f * (x / 2500.0f), 0.1f, 1.0f };
-  //    ecs::Particle particle
-  //    {
-  //      .position = { x / 5000.0 - .5, y / 1000.0 - .5 },
-  //      .emissive = { glm::packHalf2x16({ em.r, em.g }), glm::packHalf2x16({ em.b, em.a }) },
-  //      .velocity = glm::packHalf2x16({ 0, 0 }),
-  //      .lifetime = 9999
-  //    };
-  //    particles.push_back(particle);
-  //  }
-  //}
-
-  //auto e = _scene->CreateEntity("wall");
-  //auto& dbox = e.AddComponent<ecs::DebugBox>();
-  //glm::vec4 emissive = { 200, 0, 0, 0 };
-  //dbox.color16f.x = glm::packHalf2x16({ emissive.x, emissive.y });
-  //dbox.color16f.y = glm::packHalf2x16({ emissive.z, emissive.w });
-  //dbox.scale = { 2.1, .05 };
-  //dbox.translation = { 0, -1 };
-  //dbox.rotation = 0;
-
-  //_eventBus->Publish(ecs::AddParticles{ .particles = particles });
 }
 
 Application::Application(std::string title, ecs::Scene* scene, EventBus* eventBus)
@@ -167,8 +325,8 @@ Application::Application(std::string title, ecs::Scene* scene, EventBus* eventBu
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-  glfwWindowHint(GLFW_MAXIMIZED, false); // TODO: load from config
-  glfwWindowHint(GLFW_DECORATED, true); // TODO: load from config
+  glfwWindowHint(GLFW_MAXIMIZED, false);
+  glfwWindowHint(GLFW_DECORATED, true);
   glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
   glfwWindowHint(GLFW_SRGB_CAPABLE, GLFW_TRUE);
   glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
@@ -223,11 +381,15 @@ void Application::Run()
   /////////////////////////////////////// GAMEPLAY VARS /////////////////////////
   ///////////////////////////////////////////////////////////////////////////////
   ///////////////////////////////////////////////////////////////////////////////
-  double gameTime = 0;
   bool sandboxMode = false;
   GameState gameState = GameState::MENU;
   int startParticles = 1000;
   auto milestoneTracker = MilestoneTracker();
+
+  // hack to fix a problem where particles don't spawn the first time the game is played
+  // no idea why this fixes anything
+  particleSystem.Reset(true, startParticles << 13);
+  milestoneTracker.Reset(CreateDefaultMilestones(startParticles, _eventBus, _scene, &particleSystem));
 
   struct Pause {};
   _input->AddActionBinding<Pause>(input::ActionInput{ .type{ input::Button::KEY_ESCAPE} });
@@ -285,27 +447,33 @@ void Application::Run()
     case GameState::MENU:
     {
       ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-      ImGui::SetNextWindowSize(ImVec2(200, 200));
+      ImGui::SetNextWindowSize(ImVec2(300, 185));
       ImGui::Begin("common", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration);
 
       if (ImGui::Button("Play Game", { -1, 0 }))
       {
         gameState = GameState::RUNNING;
         sandboxMode = false;
-        particleSystem.Reset(true, startParticles << 12);
-        milestoneTracker.Reset(CreateDefaultMilestones(startParticles, _eventBus, _scene));
+        particleSystem.Reset(true, startParticles << 13);
+        milestoneTracker.Reset(CreateDefaultMilestones(startParticles, _eventBus, _scene, &particleSystem));
       }
 
       if (ImGui::Button("Play Sandbox", { -1, 0 }))
       {
         gameState = GameState::RUNNING;
         sandboxMode = true;
-        particleSystem.Reset(true, startParticles << 12);
-        milestoneTracker.Reset(CreateDefaultMilestones(startParticles, _eventBus, _scene));
+        particleSystem.Reset(true, startParticles << 13);
+        milestoneTracker.Reset(CreateDefaultMilestones(startParticles, _eventBus, _scene, &particleSystem));
+      }
+
+      if (ImGui::Button("Quit Game", { -1, 0 }))
+      {
+        glfwSetWindowShouldClose(_window, true);
       }
 
       if (ImGui::TreeNode("Options"))
       {
+        ImGui::PushItemWidth(100);
         ImGui::SliderInt("Initial Particles", &startParticles, 100, 4000);
         int simHz = static_cast<int>(1.0 / _simulationTick);
         ImGui::SliderInt("Simulation Hz", &simHz, 15, 240);
@@ -314,9 +482,19 @@ void Application::Run()
         ImGui::TreePop();
       }
 
-      if (ImGui::Button("Quit Game", { -1, 0 }))
+      if (ImGui::TreeNode("Controls"))
       {
-        glfwSetWindowShouldClose(_window, true);
+        ImGui::Text("Escape: pauses game");
+        ImGui::Text("Cursor: control flock");
+
+        ImGui::TreePop();
+      }
+
+      if (ImGui::TreeNode("How to Play"))
+      {
+        ImGui::Text("Keep your flock alive.");
+
+        ImGui::TreePop();
       }
 
       ImGui::End();
@@ -334,10 +512,14 @@ void Application::Run()
           {
             gameState = GameState::END;
           }
+
+          if (milestoneTracker._milestones.empty())
+          {
+            gameState = GameState::END;
+          }
         }
 
         particleSystem.Update(_simulationTick);
-        gameTime += _simulationTick;
 
         simulationAccum -= _simulationTick;
         //simulationAccum = 0;
@@ -347,7 +529,7 @@ void Application::Run()
     case GameState::PAUSED:
     {
       ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-      ImGui::SetNextWindowSize(ImVec2(200, 200));
+      ImGui::SetNextWindowSize(ImVec2(200, 60));
       ImGui::Begin("common", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration);
 
       if (ImGui::Button("Resume", { -1, 0 }))
@@ -359,7 +541,7 @@ void Application::Run()
       {
         gameState = GameState::MENU;
         _scene->Registry().clear();
-        particleSystem.Reset(false, 100);
+        particleSystem.Reset(false, startParticles << 13);
       }
 
       ImGui::End();
@@ -367,11 +549,32 @@ void Application::Run()
     }
     case GameState::END:
     {
-      ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_Always, ImVec2(0.0f, 0.0f));
-      ImGui::SetNextWindowSize(ImVec2(200, 200));
-      ImGui::Begin("sandbox", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration);
+      ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+      ImGui::SetNextWindowSize(ImVec2(300, 200));
+      ImGui::Begin("end", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration);
 
-      ImGui::Text("Framerate: %.0fHz", 1.0 / dt);
+      auto survived = particleSystem.GetNumParticles();
+      if (survived == 0)
+      {
+        ImGui::Text("Your flock has died.");
+        ImGui::Text("There was still.");
+      }
+      else
+      {
+        ImGui::Text("Your flock survived!");
+        ImGui::Text("Well, %.3f%% of it did anyways.", 100.0 * double(survived) / (uint64_t(startParticles) << 12u));
+      }
+
+      if (ImGui::Button("Free Play"))
+      {
+        gameState = GameState::RUNNING;
+        sandboxMode = true;
+      }
+
+      if (ImGui::Button("Main Menu"))
+      {
+        gameState = GameState::MENU;
+      }
 
       ImGui::End();
 
@@ -386,7 +589,7 @@ void Application::Run()
     if ((gameState == GameState::RUNNING || gameState == GameState::PAUSED) && sandboxMode == true)
     {
       ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_Always, ImVec2(0.0f, 0.0f));
-      ImGui::SetNextWindowSize(ImVec2(400, 200));
+      ImGui::SetNextWindowSize(ImVec2(400, 170));
       ImGui::Begin("sandbox", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration);
 
       ImGui::Text("Framerate: %.0fHz", 1.0 / dt);
@@ -399,10 +602,25 @@ void Application::Run()
       ImGui::SliderInt("Simulation Hz", &simHz, 15, 240);
       _simulationTick = 1.0 / simHz;
 
+      if (ImGui::Button("Double Particles"))
+      {
+        MakeParticles(_eventBus, particleSystem.GetNumParticles(), { particleSystem.cursorX, particleSystem.cursorY }, 10, { .4, .2, .1, 0 });
+      }
+      ImGui::SameLine();
       if (ImGui::Button("Reset"))
       {
-        particleSystem.Reset(false, startParticles << 12);
-        milestoneTracker.Reset(CreateDefaultMilestones(startParticles, _eventBus, _scene));
+        _scene->Registry().clear();
+        particleSystem.Reset(false, startParticles << 13);
+        milestoneTracker.Reset(CreateDefaultMilestones(startParticles, _eventBus, _scene, &particleSystem));
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("Clear Walls"))
+      {
+        _scene->Registry().clear();
+        MakeStaticWall(_scene, { 123456, 123456 }, { .01, .01 });
+        std::queue<Milestone> ms;
+        ms.push(Milestone{ .time = 9999, .spawnMilestone = []() {} });
+        milestoneTracker.Reset(ms);
       }
 
       ImGui::End();

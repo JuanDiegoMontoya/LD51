@@ -51,38 +51,6 @@ shared int sh_requestedFreeIndices;
 shared int sh_drawIndex;
 shared int sh_requestedDrawIndices;
 
-struct Box2
-{
-  vec3 radius;
-  vec3 invRadius;
-  vec3 center;
-};
-struct Ray
-{
-  vec3 origin;
-  vec3 dir;
-};
-
-// https://www.jcgt.org/published/0007/03/04/paper-lowres.pdf
-bool IntersectBox(in Box2 box, in Ray ray, out float dist, out vec3 normal)
-{
-  ray.origin = ray.origin - box.center;
-
-  vec3 sgn = -sign(ray.dir);
-  vec3 d = box.radius * sgn - ray.origin;
-  d *= 1.0 / ray.dir;
-
-  #define TEST(U, VW) (d.U >= 0.0) && \
-    all(lessThan(abs(ray.origin.VW + ray.dir.VW * d.U), box.radius.VW))
-  bvec3 test = bvec3(TEST(x, yz), TEST(y, zx), TEST(z, xy));
-  sgn = test.x ? vec3(sgn.x,0,0) : (test.y ? vec3(0,sgn.y,0) : vec3(0,0,test.z ? sgn.z:0));
-  #undef TEST
-
-  normal = sgn;
-  dist = (sgn.x != 0) ? d.x : ((sgn.y != 0) ? d.y : d.z);
-  return (sgn.x != 0) || (sgn.y != 0) || (sgn.z != 0);
-}
-
 layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 void main()
 {
@@ -121,7 +89,7 @@ void main()
     // visualize velocity magnitude
     if (particle.lifetime > 1)
     {
-      particle.emissive.y = packHalf2x16(vec2(length(velocity * 0.4), unpackHalf2x16(particle.emissive.y).y));
+      particle.emissive.y = packHalf2x16(vec2(unpackHalf2x16(particle.emissive.y).x, length(velocity * 1.4)));
     }
 
     // visualize acceleration magnitude
@@ -142,29 +110,19 @@ void main()
         if (ppos.x > bpos.x - bscl.x && ppos.y > bpos.y - bscl.y &&
             ppos.x < bpos.x + bscl.x && ppos.y < bpos.y + bscl.y)
         {
-          Box2 box2;
-          box2.radius = vec3(bscl, 0.01);
-          box2.invRadius = 1.0 / box2.radius;
-          box2.center = vec3(bpos, 0.1);
-          Ray ray;
-          ray.origin = vec3(particle.position, 0.1);
-          ray.dir = normalize(vec3(velocity, 0.01));
+          particle.emissive.x = packHalf2x16(vec2(2.8, .1));
+          particle.emissive.y = packHalf2x16(vec2(.1, .0));
+          //vec2 refldir = reflect(-normalize(velocity), vec2(normal));
+          //velocity = refldir * length(velocity) * 2;
 
-          float dist;
-          vec3 normal;
-          IntersectBox(box2, ray, dist, normal);
+          if (particle.lifetime > 1)
           {
-            if (particle.lifetime > 1)
-            {
-              particle.lifetime = 1;
-            }
-            particle.emissive.x = packHalf2x16(vec2(2.8, .1));
-            particle.emissive.y = packHalf2x16(vec2(.1, .0));
-            vec2 refldir = reflect(-normalize(velocity), vec2(normal));
-            velocity = refldir * length(velocity) * 2;
-            particle.position += velocity * uniforms.dt * 1.2;
-            break;
+            particle.lifetime = 1;
+            particle.position += velocity * uniforms.dt * 3.0;
+            velocity = -velocity * 1.5;
+            //if (index % 8 == 0) velocity *= -1;
           }
+          break;
         }
       }
 

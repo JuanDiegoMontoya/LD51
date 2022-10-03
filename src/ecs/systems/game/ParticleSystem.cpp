@@ -1,12 +1,17 @@
 #include "ParticleSystem.h"
 #include "Renderer.h"
 #include "ecs/Scene.h"
+#include "ecs/Entity.h"
 #include "utils/LoadFile.h"
+#include <glm/packing.hpp>
+#include <glm/glm.hpp>
 #include <entt/entity/registry.hpp>
 #include <Fwog/Shader.h>
 #include <Fwog/Rendering.h>
 #include <vector>
 #include <glad/gl.h>
+#include <algorithm>
+#include <cmath>
 
 namespace ecs
 {
@@ -26,7 +31,7 @@ namespace ecs
   ParticleSystem::ParticleSystem(Scene* scene, EventBus* eventBus, Renderer* renderer)
     : System(scene, eventBus), _renderer(renderer)
   {
-    Reset(true, 100'000);
+    Reset(true, 5'000'000);
 
     auto update = Fwog::Shader(Fwog::PipelineStage::COMPUTE_SHADER, LoadFile("assets/shaders/particles/UpdateParticles.comp.glsl"));
     auto add = Fwog::Shader(Fwog::PipelineStage::COMPUTE_SHADER, LoadFile("assets/shaders/particles/AddParticles.comp.glsl"));
@@ -45,9 +50,9 @@ namespace ecs
     if (hard)
     {
       magnetism = 1.0f;
-      friction = 0.01f;
-      accelerationConstant = 1.0f;
-      accelerationMinDistance = 2.0f;
+      friction = 0.15f;
+      accelerationConstant = 0.0f;
+      accelerationMinDistance = 1.0f;
     }
 
     _particles = std::make_unique<Fwog::Buffer>(sizeof(Particle) * MAX_PARTICLES, Fwog::BufferStorageFlag::NONE);
@@ -79,8 +84,50 @@ namespace ecs
     auto viewBox = _scene->Registry().view<ecs::DebugBox>();
     std::vector<Box> boxes;
     boxes.reserve(viewBox.size());
-    for (auto&& [_, box] : viewBox.each()) boxes.push_back({ box.translation, box.scale });
+    for (auto&& [_, box] : viewBox.each()) if (box.active) boxes.push_back({ box.translation, box.scale });
     auto boxBuffer = Fwog::Buffer(std::span(boxes));
+
+    // make boxes that are "about to spawn" flicker in some way
+    auto viewBoxLife = _scene->Registry().view<ecs::DebugBox, ecs::Flicker>();
+    std::vector<ecs::Entity> removeFlickerList;
+    for (auto&& [entity, box, flicker] : viewBoxLife.each())
+    {
+      flicker.timeLeft -= dt;
+      glm::vec4 emissive = {};
+      emissive.r = static_cast<float>(200 * (1 + sin(flicker.timeLeft * 4.0 * 3.1415) / 2));
+      emissive.g = static_cast<float>(200 * (1 + sin(flicker.timeLeft * 4.0 * 3.1415) / 2));
+      emissive = glm::mix(emissive, glm::vec4(200, 0, 0, 0), float(1.0 - flicker.timeLeft / 3.0));
+
+      if (flicker.timeLeft <= 0)
+      {
+        emissive.r = 200;
+        emissive.g = 0;
+        removeFlickerList.push_back(Entity(entity, _scene));
+        box.active = true;
+      }
+      box.color16f.x = glm::packHalf2x16(glm::vec2(emissive));
+      //box.color16f.y = glm::packHalf2x16(glm::vec2(emissive));
+    }
+
+    for (auto&& entity : removeFlickerList)
+    {
+      entity.RemoveComponents<ecs::Flicker>();
+    }
+
+    auto viewBoxMove = _scene->Registry().view<ecs::DebugBox, ecs::Movement>();
+    for (auto&& [_, box, move] : viewBoxMove.each())
+    {
+      move.accum += dt;
+      move.accum = std::fmod(move.accum, move.period);
+      if (move.accum / (move.period / 2.0) < 1.0)
+      {
+        box.translation = glm::mix(move.posA, move.posB, move.accum / (move.period / 2.0));
+      }
+      else
+      {
+        box.translation = glm::mix(move.posA, move.posB, 2 - move.accum / (move.period / 2.0));
+      }
+    }
 
     Fwog::BeginCompute("Update particles");
     {
@@ -90,8 +137,6 @@ namespace ecs
       Fwog::Cmd::BindStorageBuffer(2, *_renderIndices, 0, _renderIndices->Size());
       Fwog::Cmd::BindStorageBuffer(3, boxBuffer, 0, boxBuffer.Size());
       Fwog::Cmd::BindUniformBuffer(0, *_uniforms, 0, _uniforms->Size());
-      constexpr int32_t zero = 0;
-      _renderIndices->ClearSubData(0, sizeof(int32_t), Fwog::Format::R32_SINT, Fwog::UploadFormat::R, Fwog::UploadType::SINT, &zero);
 
       Uniforms uniforms
       {
@@ -106,6 +151,8 @@ namespace ecs
 
       uint32_t workgroups = (MAX_PARTICLES + 127) / 128;
       Fwog::Cmd::MemoryBarrier(Fwog::MemoryBarrierAccessBit::SHADER_STORAGE_BIT | Fwog::MemoryBarrierAccessBit::UNIFORM_BUFFER_BIT);
+      constexpr int32_t zero = 0;
+      _renderIndices->ClearSubData(0, sizeof(int32_t), Fwog::Format::R32_SINT, Fwog::UploadFormat::R, Fwog::UploadType::SINT, &zero);
       Fwog::Cmd::Dispatch(workgroups, 1, 1);
     }
     Fwog::EndCompute();
@@ -126,37 +173,36 @@ namespace ecs
     boxes.reserve(viewBox.size());
     circles.reserve(viewCircle.size());
     
-    for (auto&& [_, line] : viewLine.each())
-    {
-      lines.push_back(line);
-    }
     for (auto&& [_, box] : viewBox.each())
     {
       boxes.push_back(box);
     }
-    for (auto&& [_, circle] : viewCircle.each())
-    {
-      circles.push_back(circle);
-    }
 
     _renderer->ClearHDR();
 
-    _renderer->DrawLines(lines);
     _renderer->DrawBoxes(boxes);
-    _renderer->DrawCircles(circles);
 
     _renderer->DrawParticles(*_particles, *_renderIndices, MAX_PARTICLES);
   }
 
   std::uint32_t ParticleSystem::GetNumParticles()
   {
+    glFinish();
+    glMemoryBarrier(GL_ALL_BARRIER_BITS);
     int32_t size{};
     glGetNamedBufferSubData(_tombstones->Handle(), 0, sizeof(int32_t), &size);
-    return MAX_PARTICLES - size;
+    auto ret = int32_t(MAX_PARTICLES) - size;
+    if (ret < 0)
+    {
+      printf("bug! value: %d\n", ret);
+      ret = 0;
+    }
+    return ret;
   }
 
   void ParticleSystem::HandleParticleAdd(AddParticles& e)
   {
+    glFinish();
     Fwog::BeginCompute("Copy particles");
     {
       auto tempBuffer = Fwog::TypedBuffer<Particle>(e.particles);

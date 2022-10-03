@@ -159,9 +159,6 @@ std::queue<Milestone> CreateDefaultMilestones(int startParticles,
       .spawnMilestone = [=]
       {
         MakeParticles(eventBus, startParticles, { particleSystem->cursorX, particleSystem->cursorY}, 100);
-
-        // Load-bearing wall: not having at least ONE wall somehow causes nothing to render and I don't know why
-        MakeStaticWall(scene, { 123456, 123456 }, { .01, .01 });
       } });
 
   milestones.push(Milestone
@@ -291,7 +288,6 @@ std::queue<Milestone> CreateDefaultMilestones(int startParticles,
       {
         MakeParticles(eventBus, particleSystem->GetNumParticles(), { particleSystem->cursorX, particleSystem->cursorY}, 5, { .2, .2, .2, 0 });
         scene->Registry().clear();
-        MakeStaticWall(scene, { 123456, 123456 }, { .01, .01 });
       } });
 
   milestones.push(Milestone
@@ -617,7 +613,6 @@ void Application::Run()
       if (ImGui::Button("Clear Walls"))
       {
         _scene->Registry().clear();
-        MakeStaticWall(_scene, { 123456, 123456 }, { .01, .01 });
         std::queue<Milestone> ms;
         ms.push(Milestone{ .time = 9999, .spawnMilestone = []() {} });
         milestoneTracker.Reset(ms);

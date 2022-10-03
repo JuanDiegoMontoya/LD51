@@ -639,6 +639,9 @@ void Renderer::DrawParticles(const Fwog::Buffer& particles, const Fwog::Buffer& 
   auto attachment = Fwog::RenderAttachment{ .texture = &_resources->frame.output_hdr };
   Fwog::BeginRendering({ .name = "Resolve particles", .colorAttachments = {{ attachment }} });
   {
+    // HACK: if imgui is the only other thing doing graphics this frame,
+    // the pipeline binding will be skipped (due to Fwog not knowing about the outside world)
+    Fwog::Cmd::BindGraphicsPipeline(_resources->backgroundPipeline);
     Fwog::Cmd::BindGraphicsPipeline(_resources->particleResolvePipeline);
     Fwog::Cmd::BindSampledImage(0, _resources->frame.particle_hdr_r, sampler);
     Fwog::Cmd::BindSampledImage(1, _resources->frame.particle_hdr_g, sampler);

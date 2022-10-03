@@ -5,7 +5,13 @@ struct Particle
   vec2 position;
   uvec2 emissive; // packed 16-bit float RGBA
   uint velocity; // packed 16-bit float XY
-  uint flags;
+  float lifetime;
+};
+
+struct Box
+{
+  vec2 position;
+  vec2 scale;
 };
 
 layout(std430, binding = 0) restrict buffer ParticlesBuffer
@@ -24,6 +30,11 @@ layout(std430, binding = 2) coherent restrict buffer RenderIndicesBuffer
   coherent int size;
   int indices[];
 }renderIndices;
+
+layout(std430, binding = 3) readonly restrict buffer WallBuffer
+{
+  Box list[];
+}walls;
 
 layout(std140, binding = 0) uniform Uniforms
 {
@@ -58,7 +69,7 @@ void main()
   {
     Particle particle = particles.list[index];
     vec2 velocity = unpackHalf2x16(particle.velocity) * .9995;
-    float accelMagnitude = uniforms.magnetism / max(1.0, distance(uniforms.cursorPosition, particle.position));
+    float accelMagnitude = uniforms.magnetism / max(2.0, distance(uniforms.cursorPosition, particle.position));
     accelMagnitude = 1.0;
     vec2 acceleration = accelMagnitude * normalize(uniforms.cursorPosition - particle.position);
 
@@ -69,28 +80,56 @@ void main()
     //particle.emissive.x = packHalf2x16(abs(acceleration) * .2);
 
     // visualize velocity magnitude
-    particle.emissive.y = packHalf2x16(vec2(length(velocity * .2), 1.0));
+    if (particle.lifetime > 1)
+    {
+      particle.emissive.y = packHalf2x16(vec2(length(velocity * 0.4), unpackHalf2x16(particle.emissive.y).y));
+    }
 
     // visualize acceleration magnitude
     //particle.emissive.y = packHalf2x16(vec2(length(acceleration), 1.0));
 
-    if (particle.flags > 0)
+    if (particle.lifetime > 0.0)
     {
       velocity += acceleration * uniforms.dt;
+
+      // test the particle against each wall
+      for (int i = 0; i < walls.list.length(); i++)
+      {
+        Box box = walls.list[i];
+        const vec2 ppos = particle.position;
+        const vec2 bpos = box.position;
+        const vec2 bscl = box.scale / 1.5;
+        if (ppos.x > bpos.x - bscl.x && ppos.y > bpos.y - bscl.y &&
+            ppos.x < bpos.x + bscl.x && ppos.y < bpos.y + bscl.y)
+        {
+          if (particle.lifetime > 1)
+          {
+            particle.lifetime = 1;
+          }
+          particle.emissive.x = packHalf2x16(vec2(2.8, .1));
+          particle.emissive.y = packHalf2x16(vec2(.1, .0));
+          vec2 refldir = reflect(normalize(velocity), vec2(0, 1));
+          velocity = refldir * length(velocity);
+          particle.position += velocity * uniforms.dt * 2;
+          break;
+        }
+      }
+
       particle.position += velocity * uniforms.dt;
       particle.velocity = packHalf2x16(velocity);
+      particle.lifetime -= uniforms.dt;
 
-      // if (life <= 0.0) // particle just died
-      // {
-      //   needFreeIndex = true;
-      //   atomicAdd(sh_requestedFreeIndices, 1);
-      // }
-      // else
-      // {
+      if (particle.lifetime <= 0.0) // particle just died
+      {
+        needFreeIndex = true;
+        atomicAdd(sh_requestedFreeIndices, 1);
+      }
+      else
+      {
          // particle is alive, so we will render it (add its index to drawIndices)
          needDrawIndex = true;
          atomicAdd(sh_requestedDrawIndices, 1);
-      // }
+      }
     }
 
     particles.list[index] = particle;

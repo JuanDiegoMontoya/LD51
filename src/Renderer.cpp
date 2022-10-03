@@ -119,8 +119,7 @@ struct SpriteUniforms
 struct PrimitiveUniforms
 {
   glm::mat3x2 transform;
-  glm::u8vec4 color;
-  glm::uint _padding;
+  glm::uvec2 color16f;
 };
 
 struct FrameUniforms
@@ -277,7 +276,7 @@ Renderer::Renderer(GLFWwindow* window)
     .fragmentShader = &simpleColor_fs,
     .inputAssemblyState = {.topology = Fwog::PrimitiveTopology::LINE_LIST },
     .vertexInputState = { lineInputDescs },
-    .colorBlendState = {.attachments = std::span(&colorBlend, 1) }
+    //.colorBlendState = {.attachments = std::span(&colorBlend, 1) }
   });
 
   auto primitive_vs = Fwog::Shader(Fwog::PipelineStage::VERTEX_SHADER, LoadFile("assets/shaders/PrimitiveBatched.vert.glsl"));
@@ -286,16 +285,23 @@ Renderer::Renderer(GLFWwindow* window)
     .fragmentShader = &simpleColor_fs,
     .inputAssemblyState = {.topology = Fwog::PrimitiveTopology::LINE_STRIP },
     .vertexInputState = { std::span(&linePosDesc, 1) },
-    .colorBlendState = { .attachments = std::span(&colorBlend, 1) }
+    //.colorBlendState = { .attachments = std::span(&colorBlend, 1) }
   });
 
   auto particle_cs = Fwog::Shader(Fwog::PipelineStage::COMPUTE_SHADER, LoadFile("assets/shaders/particles/RenderParticles.comp.glsl"));
   _resources->particlePipeline = Fwog::CompileComputePipeline({ .shader = &particle_cs });
 
+  auto colorBlendParticle = Fwog::ColorBlendAttachmentState
+  {
+    .blendEnable = true,
+    .srcColorBlendFactor = Fwog::BlendFactor::ONE,
+    .dstColorBlendFactor = Fwog::BlendFactor::ONE,
+  };
   auto particle_resolve_fs = Fwog::Shader(Fwog::PipelineStage::FRAGMENT_SHADER, LoadFile("assets/shaders/particles/ResolveParticleImage.frag.glsl"));
   _resources->particleResolvePipeline = Fwog::CompileGraphicsPipeline({
     .vertexShader = &bg_vs,
     .fragmentShader = &particle_resolve_fs,
+    .colorBlendState = { .attachments = std::span(&colorBlendParticle, 1) }
   });
 
   auto tonemap_cs = Fwog::Shader(Fwog::PipelineStage::COMPUTE_SHADER, LoadFile("assets/shaders/bloom/TonemapAndDither.comp.glsl"));
@@ -345,7 +351,9 @@ void Renderer::ApplyBloom(const Fwog::Texture& target, uint32_t passes, float st
     // first pass, use downsampling with low-pass filter
     if (i == 0)
     {
-      Fwog::Cmd::BindComputePipeline(_resources->bloomDownsampleLowPass);
+      // the low pass filter prevents single pixels/thin lines from being bright
+      //Fwog::Cmd::BindComputePipeline(_resources->bloomDownsampleLowPass);
+      Fwog::Cmd::BindComputePipeline(_resources->bloomDownsample);
 
       sourceLod = 0;
       sourceTex = &target;
@@ -531,19 +539,24 @@ void Renderer::DrawBoxes(std::span<const ecs::DebugBox> boxes)
     glm::mat3x2 model = glm::scale(glm::rotate(glm::translate(glm::mat3(1), box.translation), box.rotation), box.scale);
     primitives.push_back(PrimitiveUniforms{
       .transform = model,
-      .color = box.color
+      .color16f = box.color16f
     });
   }
 
   auto instanceBuffer = Fwog::Buffer(std::span(primitives));
 
-  Fwog::BeginSwapchainRendering({ .viewport = {.drawRect = {.offset{}, .extent{_resources->frame.width, _resources->frame.height}}},
-                                  .clearColorOnLoad = false });
-  Fwog::Cmd::BindGraphicsPipeline(_resources->primitivePipeline);
-  Fwog::Cmd::BindUniformBuffer(0, _resources->frameUniformsBuffer, 0, _resources->frameUniformsBuffer.Size());
-  Fwog::Cmd::BindStorageBuffer(0, instanceBuffer, 0, instanceBuffer.Size());
-  Fwog::Cmd::BindVertexBuffer(0, _resources->boxVertexBuffer, 0, sizeof(glm::vec2));
-  Fwog::Cmd::Draw(5, static_cast<uint32_t>(boxes.size()), 0, 0);
+  //Fwog::BeginSwapchainRendering({ .viewport = {.drawRect = {.offset{}, .extent{_resources->frame.width, _resources->frame.height}}},
+  //                                .clearColorOnLoad = false });
+
+  auto attachment0 = Fwog::RenderAttachment{ .texture = &_resources->frame.output_hdr, .clearValue{.color{.f = 0}}, .clearOnLoad = true };
+  Fwog::BeginRendering({ .name = "debug boxes", .colorAttachments = {{attachment0}}});
+  {
+    Fwog::Cmd::BindGraphicsPipeline(_resources->primitivePipeline);
+    Fwog::Cmd::BindUniformBuffer(0, _resources->frameUniformsBuffer, 0, _resources->frameUniformsBuffer.Size());
+    Fwog::Cmd::BindStorageBuffer(0, instanceBuffer, 0, instanceBuffer.Size());
+    Fwog::Cmd::BindVertexBuffer(0, _resources->boxVertexBuffer, 0, sizeof(glm::vec2));
+    Fwog::Cmd::Draw(5, static_cast<uint32_t>(boxes.size()), 0, 0);
+  }
   Fwog::EndRendering();
 }
 
@@ -561,7 +574,7 @@ void Renderer::DrawCircles(std::span<const ecs::DebugCircle> circles)
     glm::mat3x2 model = glm::scale(glm::translate(glm::mat3(1), circle.translation), glm::vec2(circle.radius));
     primitives.push_back(PrimitiveUniforms{
       .transform = model,
-      .color = circle.color
+      .color16f = circle.color16f
       });
   }
 
@@ -583,6 +596,7 @@ void Renderer::DrawParticles(const Fwog::Buffer& particles, const Fwog::Buffer& 
   auto attachment1 = Fwog::RenderAttachment{ .texture = &_resources->frame.particle_hdr_g, .clearValue{.color{.ui = 0}}, .clearOnLoad = true };
   auto attachment2 = Fwog::RenderAttachment{ .texture = &_resources->frame.particle_hdr_b, .clearValue{.color{.ui = 0}}, .clearOnLoad = true };
   auto attachments = { attachment0, attachment1, attachment2 };
+  
   Fwog::BeginRendering({ .colorAttachments = { attachments } });
   Fwog::EndRendering();
 

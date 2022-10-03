@@ -9,7 +9,7 @@ namespace ecs
     glm::vec2 position;
     glm::uvec2 emissive; // packed 16-bit float RGBA
     glm::uint velocity; // packed 16-bit float XY
-    glm::uint flags;
+    float lifetime;
   };
 
   // event

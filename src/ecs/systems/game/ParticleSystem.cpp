@@ -1,6 +1,8 @@
 #include "ParticleSystem.h"
 #include "Renderer.h"
+#include "ecs/Scene.h"
 #include "utils/LoadFile.h"
+#include <entt/entity/registry.hpp>
 #include <Fwog/Shader.h>
 #include <Fwog/Rendering.h>
 #include <vector>
@@ -50,12 +52,24 @@ namespace ecs
 
   void ParticleSystem::Update(double dt)
   {
+    struct Box
+    {
+      glm::vec2 position;
+      glm::vec2 scale;
+    };
+    auto viewBox = _scene->Registry().view<ecs::DebugBox>();
+    std::vector<Box> boxes;
+    boxes.reserve(viewBox.size());
+    for (auto&& [_, box] : viewBox.each()) boxes.push_back({ box.translation, box.scale });
+    auto boxBuffer = Fwog::Buffer(std::span(boxes));
+
     Fwog::BeginCompute("Update particles");
     {
       Fwog::Cmd::BindComputePipeline(_particleUpdate);
       Fwog::Cmd::BindStorageBuffer(0, *_particles, 0, _particles->Size());
       Fwog::Cmd::BindStorageBuffer(1, *_tombstones, 0, _tombstones->Size());
       Fwog::Cmd::BindStorageBuffer(2, *_renderIndices, 0, _renderIndices->Size());
+      Fwog::Cmd::BindStorageBuffer(3, boxBuffer, 0, boxBuffer.Size());
       Fwog::Cmd::BindUniformBuffer(0, *_uniforms, 0, _uniforms->Size());
       constexpr int32_t zero = 0;
       _renderIndices->ClearSubData(0, sizeof(int32_t), Fwog::Format::R32_SINT, Fwog::UploadFormat::R, Fwog::UploadType::SINT, &zero);
@@ -77,6 +91,37 @@ namespace ecs
 
   void ParticleSystem::Draw()
   {
+    // draw debug primitives
+    // FYI, this is a HACK as the code is ripped straight from the debug system
+    // the reason it's done this way is because the game needs a simple way to draw boxes, which the debug drawing facilities provide
+    auto viewLine = _scene->Registry().view<ecs::DebugLine>();
+    auto viewBox = _scene->Registry().view<ecs::DebugBox>();
+    auto viewCircle = _scene->Registry().view<ecs::DebugCircle>();
+    std::vector<ecs::DebugLine> lines;
+    std::vector<ecs::DebugBox> boxes;
+    std::vector<ecs::DebugCircle> circles;
+    lines.reserve(viewLine.size());
+    boxes.reserve(viewBox.size());
+    circles.reserve(viewCircle.size());
+    
+    for (auto&& [_, line] : viewLine.each())
+    {
+      lines.push_back(line);
+    }
+    for (auto&& [_, box] : viewBox.each())
+    {
+      boxes.push_back(box);
+    }
+    for (auto&& [_, circle] : viewCircle.each())
+    {
+      circles.push_back(circle);
+    }
+
+    _renderer->DrawLines(lines);
+    _renderer->DrawBoxes(boxes);
+    _renderer->DrawCircles(circles);
+
+
     _renderer->DrawParticles(*_particles, *_renderIndices, MAX_PARTICLES);
   }
 

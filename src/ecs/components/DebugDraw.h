@@ -18,13 +18,13 @@ namespace ecs
     glm::vec2 translation = { 0, 0 };
     float rotation = 0;
     glm::vec2 scale = { 0, 0 };
-    glm::u8vec4 color = { 0, 0, 0, 0 };
+    glm::uvec2 color16f = { 0, 0 };
   };
 
   struct DebugCircle
   {
     glm::vec2 translation = { 0, 0 };
     float radius = 1;
-    glm::u8vec4 color = { 0, 0, 0, 0 };
+    glm::uvec2 color16f = { 0, 0 };
   };
 }

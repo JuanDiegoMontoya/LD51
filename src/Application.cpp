@@ -10,6 +10,10 @@
 #include "ecs/systems/RenderingSystem.h"
 #include "ecs/systems/DebugSystem.h"
 #include <Fwog/Texture.h>
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_opengl3.h>
+#include <glad/gl.h>
 #include <GLFW/glfw3.h>
 #include <utility>
 #include <stdexcept>
@@ -89,7 +93,13 @@ void Application::Run()
   auto debugSystem = ecs::DebugSystem(_scene, _eventBus, _window, &renderer);
   auto particleSystem = ecs::ParticleSystem(_scene, _eventBus, &renderer);
 
-  // TODO: temp
+  enum class GameState
+  {
+    MENU,
+    RUNNING,
+    PAUSED,
+  };
+
   std::vector<ecs::Particle> particles;
   for (int x = 0; x < 5000; x++)
   {
@@ -101,11 +111,20 @@ void Application::Run()
         .position = { x / 5000.0 - .5, y / 1000.0 - .5 },
         .emissive = { glm::packHalf2x16({ em.r, em.g }), glm::packHalf2x16({ em.b, em.a }) },
         .velocity = glm::packHalf2x16({ 0, 0 }),
-        .flags = 1
+        .lifetime = 9999
       };
       particles.push_back(particle);
     }
   }
+
+  auto e = _scene->CreateEntity("wall");
+  auto& dbox = e.AddComponent<ecs::DebugBox>();
+  glm::vec4 emissive = { 200, 0, 0, 0 };
+  dbox.color16f.x = glm::packHalf2x16({ emissive.x, emissive.y });
+  dbox.color16f.y = glm::packHalf2x16({ emissive.z, emissive.w });
+  dbox.scale = { 2.1, .05 };
+  dbox.translation = { 0, -1 };
+  dbox.rotation = 0;
 
   _eventBus->Publish(ecs::AddParticles{ .particles = particles });
 
@@ -147,6 +166,26 @@ void Application::Run()
     particleSystem.Draw();
 
     debugSystem.Update(dt);
+
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    ImGui::Begin("hello");
+    ImGui::Text("Framerate: %.0fHz", 1.0 / dt);
+    ImGui::Text("Entities: %d", _scene->Registry().alive());
+    if (ImGui::Button("Nuke Entities"))
+    {
+      _scene->Registry().clear();
+    }
+
+    ImGui::End();
+
+    glDisable(GL_FRAMEBUFFER_SRGB);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    ImGui::EndFrame();
 
     glfwSwapBuffers(_window);
   }

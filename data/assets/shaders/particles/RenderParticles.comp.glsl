@@ -5,7 +5,7 @@ struct Particle
   vec2 position;
   uvec2 emissive; // packed 16-bit float RGBA
   uint velocity; // packed 16-bit float XY
-  uint flags;
+  float lifetime;
 };
 
 layout(std430, binding = 0) readonly restrict buffer ParticlesBuffer
@@ -41,6 +41,7 @@ void main()
     return;
   
   vec4 color = vec4(unpackHalf2x16(particle.emissive.x), unpackHalf2x16(particle.emissive.y));
+  if (particle.lifetime < 1.0) color *= particle.lifetime;
   uvec4 colorQuantized = uvec4(color * 256.0 + 0.5);
   imageAtomicAdd(i_target_r, uv, colorQuantized.r);
   imageAtomicAdd(i_target_g, uv, colorQuantized.g);

@@ -149,7 +149,7 @@ namespace ecs
       };
       _uniforms->SubData(uniforms, 0);
 
-      uint32_t workgroups = (MAX_PARTICLES + 127) / 128;
+      uint32_t workgroups = (MAX_PARTICLES + 511) / 512;
       Fwog::Cmd::MemoryBarrier(Fwog::MemoryBarrierAccessBit::SHADER_STORAGE_BIT | Fwog::MemoryBarrierAccessBit::UNIFORM_BUFFER_BIT);
       constexpr int32_t zero = 0;
       _renderIndices->ClearSubData(0, sizeof(int32_t), Fwog::Format::R32_SINT, Fwog::UploadFormat::R, Fwog::UploadType::SINT, &zero);
@@ -211,7 +211,7 @@ namespace ecs
       Fwog::Cmd::BindStorageBuffer(1, *_tombstones, 0, _tombstones->Size());
       Fwog::Cmd::BindStorageBuffer(2, tempBuffer, 0, tempBuffer.Size());
 
-      uint32_t workgroups = static_cast<uint32_t>((e.particles.size() + 63) / 64);
+      uint32_t workgroups = static_cast<uint32_t>((e.particles.size() + 511) / 512);
       Fwog::Cmd::MemoryBarrier(Fwog::MemoryBarrierAccessBit::SHADER_STORAGE_BIT);
       Fwog::Cmd::Dispatch(workgroups, 1, 1);
     }

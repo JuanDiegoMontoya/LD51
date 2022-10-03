@@ -24,7 +24,7 @@ layout(binding = 0, r32ui) restrict uniform uimage2D i_target_r;
 layout(binding = 1, r32ui) restrict uniform uimage2D i_target_g;
 layout(binding = 2, r32ui) restrict uniform uimage2D i_target_b;
 
-layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 512, local_size_y = 1, local_size_z = 1) in;
 void main()
 {
   uint index = gl_GlobalInvocationID.x;

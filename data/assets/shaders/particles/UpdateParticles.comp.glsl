@@ -51,7 +51,7 @@ shared int sh_requestedFreeIndices;
 shared int sh_drawIndex;
 shared int sh_requestedDrawIndices;
 
-layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 512, local_size_y = 1, local_size_z = 1) in;
 void main()
 {
   // strategy: record how many elements we actually need, request it at once, then write to buffers

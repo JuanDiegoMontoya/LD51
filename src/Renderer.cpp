@@ -629,7 +629,7 @@ void Renderer::DrawParticles(const Fwog::Buffer& particles, const Fwog::Buffer& 
     Fwog::Cmd::BindImage(1, _resources->frame.particle_hdr_g, 0);
     Fwog::Cmd::BindImage(2, _resources->frame.particle_hdr_b, 0);
 
-    uint32_t workgroups = (maxParticles + 63) / 64;
+    uint32_t workgroups = (maxParticles + 511) / 512;
     Fwog::Cmd::MemoryBarrier(Fwog::MemoryBarrierAccessBit::IMAGE_ACCESS_BIT | Fwog::MemoryBarrierAccessBit::SHADER_STORAGE_BIT);
     Fwog::Cmd::Dispatch(workgroups, 1, 1);
   }

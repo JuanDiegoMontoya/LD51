@@ -24,7 +24,7 @@ layout(std430, binding = 2) readonly restrict buffer ParticlesCopyBuffer
   Particle list[];
 }inParticles;
 
-layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 512, local_size_y = 1, local_size_z = 1) in;
 void main()
 {
   uint index = gl_GlobalInvocationID.x;

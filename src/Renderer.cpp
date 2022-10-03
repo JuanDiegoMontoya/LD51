@@ -599,9 +599,14 @@ void Renderer::DrawCircles(std::span<const ecs::DebugCircle> circles)
 
 void Renderer::DrawParticles(const Fwog::Buffer& particles, const Fwog::Buffer& renderIndices, uint32_t maxParticles)
 {
-  auto attachment0 = Fwog::RenderAttachment{ .texture = &_resources->frame.particle_hdr_r, .clearValue{.color{.ui = 0}}, .clearOnLoad = true };
-  auto attachment1 = Fwog::RenderAttachment{ .texture = &_resources->frame.particle_hdr_g, .clearValue{.color{.ui = 0}}, .clearOnLoad = true };
-  auto attachment2 = Fwog::RenderAttachment{ .texture = &_resources->frame.particle_hdr_b, .clearValue{.color{.ui = 0}}, .clearOnLoad = true };
+  Fwog::ClearColorValue ccv{};
+  ccv.ui[0] = 0;
+  ccv.ui[1] = 0;
+  ccv.ui[2] = 0;
+  ccv.ui[3] = 0;
+  auto attachment0 = Fwog::RenderAttachment{ .texture = &_resources->frame.particle_hdr_r, .clearValue{.color{ccv}}, .clearOnLoad = true };
+  auto attachment1 = Fwog::RenderAttachment{ .texture = &_resources->frame.particle_hdr_g, .clearValue{.color{ccv}}, .clearOnLoad = true };
+  auto attachment2 = Fwog::RenderAttachment{ .texture = &_resources->frame.particle_hdr_b, .clearValue{.color{ccv}}, .clearOnLoad = true };
   auto attachments = { attachment0, attachment1, attachment2 };
   
   // dumb hack to prevent warnings

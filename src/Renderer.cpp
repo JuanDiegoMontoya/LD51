@@ -508,7 +508,12 @@ void Renderer::DrawSprites(std::vector<RenderableSprite> sprites)
 
 void Renderer::ClearHDR()
 {
-  auto attachment0 = Fwog::RenderAttachment{ .texture = &_resources->frame.output_hdr, .clearValue{.color{.f = 0}}, .clearOnLoad = true };
+  Fwog::ClearColorValue ccv;
+  ccv.f[0] = 0;
+  ccv.f[1] = 0;
+  ccv.f[2] = 0;
+  ccv.f[3] = 0;
+  auto attachment0 = Fwog::RenderAttachment{ .texture = &_resources->frame.output_hdr, .clearValue{.color{ccv}}, .clearOnLoad = true };
   Fwog::BeginRendering({ .name = "clear", .colorAttachments = {{attachment0}} });
   Fwog::EndRendering();
 }

@@ -391,11 +391,14 @@ void Application::Run()
   GameState gameState = GameState::MENU;
   int startParticles = 1000;
   auto milestoneTracker = MilestoneTracker();
+  double gameSpeed = 1.0;
 
   struct Pause {};
   struct ScreenshotMode {};
+  struct Speedup : ecs::AxisBindingBase {};
   _input->AddActionBinding<Pause>(input::ActionInput{ .type{ input::Button::KEY_ESCAPE} });
   _input->AddActionBinding<ScreenshotMode>(input::ActionInput{ .type{ input::Button::KEY_F1} });
+  _input->AddAxisBinding<Speedup>(input::AxisInput{ .type{ input::Button::KEY_SPACE } });
 
   struct Handler
   {
@@ -424,20 +427,29 @@ void Application::Run()
   _eventBus->Subscribe(&handler, &Handler::PauseHandler);
   _eventBus->Subscribe(&handler, &Handler::ScreenshotModeHandler);
 
+  auto speedupHandler = [&gameSpeed](Speedup&) mutable -> void
+  {
+    gameSpeed = 4;
+  };
+
+  _eventBus->Subscribe(&speedupHandler, &decltype(speedupHandler)::operator());
+
   Timer timer;
   double simulationAccum = 0;
-  double inputAccum = 0;
+  //double inputAccum = 0;
   while (!glfwWindowShouldClose(_window))
   {
     double dt = timer.Elapsed_s();
     timer.Reset();
 
-    inputAccum += dt;
-    while (inputAccum > _simulationTick)
-    {
+    gameSpeed = 1;
+
+    //inputAccum += dt;
+    //while (inputAccum > _simulationTick)
+    //{
       _input->PollEvents(_simulationTick);
-      inputAccum -= _simulationTick;
-    }
+    //  inputAccum -= _simulationTick;
+    //}
 
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -488,14 +500,16 @@ void Application::Run()
         int simHz = static_cast<int>(1.0 / _simulationTick);
         ImGui::SliderInt("Simulation Hz", &simHz, 15, 240);
         _simulationTick = 1.0 / simHz;
+        ImGui::Checkbox("Enable bloom", &Renderer::enableBloom);
 
         ImGui::TreePop();
       }
 
       if (ImGui::TreeNode("Controls"))
       {
-        ImGui::Text("Escape: pauses game");
         ImGui::Text("Cursor: control flock");
+        ImGui::Text("Escape: pauses game");
+        ImGui::Text("Space: 4x game speed");
 
         ImGui::TreePop();
       }
@@ -512,6 +526,7 @@ void Application::Run()
     }
     case GameState::RUNNING:
     {
+      dt *= gameSpeed;
       simulationAccum += dt;
       while (simulationAccum > _simulationTick)
       {
@@ -529,7 +544,7 @@ void Application::Run()
           }
         }
 
-        gameTime += dt;
+        gameTime += _simulationTick;
         particleSystem.Update(_simulationTick);
 
         simulationAccum -= _simulationTick;
@@ -574,17 +589,19 @@ void Application::Run()
       {
         ImGui::Text("Your flock survived!");
         ImGui::Text("Well, %.3f%% of it did anyways.", 100.0 * double(survived) / (uint64_t(startParticles) << 12u));
-      }
+        ImGui::Text("(%u / %d)", survived, startParticles << 12);
 
-      if (ImGui::Button("Free Play"))
-      {
-        gameState = GameState::RUNNING;
-        sandboxMode = true;
+        if (ImGui::Button("Free Play"))
+        {
+          gameState = GameState::RUNNING;
+          sandboxMode = true;
+        }
       }
 
       if (ImGui::Button("Main Menu"))
       {
         gameState = GameState::MENU;
+        _scene->Registry().clear();
       }
 
       ImGui::End();

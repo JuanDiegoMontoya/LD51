@@ -332,9 +332,6 @@ void Renderer::ApplyBloom(const Fwog::Texture& target, uint32_t passes, float st
   samplerState.mipmapFilter = Fwog::Filter::NEAREST;
   samplerState.addressModeU = Fwog::AddressMode::MIRRORED_REPEAT;
   samplerState.addressModeV = Fwog::AddressMode::MIRRORED_REPEAT;
-  samplerState.lodBias = 0;
-  samplerState.minLod = -1000;
-  samplerState.maxLod = 1000;
   auto sampler = Fwog::Sampler(samplerState);
 
   Fwog::BeginCompute("Bloom");
@@ -648,7 +645,7 @@ void Renderer::DrawParticles(const Fwog::Buffer& particles, const Fwog::Buffer& 
   }
   Fwog::EndRendering();
 
-  ApplyBloom(_resources->frame.output_hdr, 6, 1.0f / 64.0f, 1.0f, _resources->frame.output_hdr_scratch);
+  ApplyBloom(_resources->frame.output_hdr, 6, enableBloom ? 1.0f / 64.0f : 0.0f, 1.0f, _resources->frame.output_hdr_scratch);
 
   // fuggit, I'm gonna resolve the final image here too
   Fwog::BeginCompute("Tonemap");

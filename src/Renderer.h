@@ -46,6 +46,8 @@ public:
 
   struct Resources;
 
+  // stinky GLOBAL (basically)
+  static inline bool enableBloom = true;
 private:
   void ApplyBloom(const Fwog::Texture& target, uint32_t passes, float strength, float width, const Fwog::Texture& scratchTexture);
 

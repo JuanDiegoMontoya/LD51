@@ -151,7 +151,7 @@ std::queue<Milestone> CreateDefaultMilestones(int startParticles,
 {
   std::queue<Milestone> milestones;
 
-  constexpr int interval = 2;
+  constexpr int interval = 10;
 
   milestones.push(Milestone
     {

@@ -20,8 +20,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/matrix_transform_2d.hpp>
 
-#if !defined(NDEBUG)
-static void GLAPIENTRY glErrorCallback(
+void GLAPIENTRY glErrorCallback(
   GLenum source,
   GLenum type,
   GLuint id,
@@ -81,7 +80,6 @@ static void GLAPIENTRY glErrorCallback(
 
   std::cout << errStream.str() << '\n';
 }
-#endif
 
 namespace
 {
@@ -195,14 +193,16 @@ Renderer::Renderer(GLFWwindow* window)
     throw std::runtime_error("Failed to initialize OpenGL");
   }
 
-#ifndef NDEBUG
+  // Hack to make everything not bug out in release mode.
+  // I have hardly a clue as to why enabling synchronous output fixes my bugs.
+  // I guess I have UB somewhere that relies on the NV driver operating in this mode.
   glEnable(GL_DEBUG_OUTPUT);
-  glDebugMessageCallback(glErrorCallback, nullptr);
   glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+#ifndef NDEBUG
+  glDebugMessageCallback(glErrorCallback, nullptr);
   glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, GL_TRUE);
 #endif
 
-  glEnable(GL_FRAMEBUFFER_SRGB);
   glDisable(GL_DITHER);
 
   int iframebufferWidth{};
@@ -604,24 +604,21 @@ void Renderer::DrawCircles(std::span<const ecs::DebugCircle> circles)
 
 void Renderer::DrawParticles(const Fwog::Buffer& particles, const Fwog::Buffer& renderIndices, uint32_t maxParticles)
 {
-  Fwog::ClearColorValue ccv{};
-  ccv.ui[0] = 0;
-  ccv.ui[1] = 0;
-  ccv.ui[2] = 0;
-  ccv.ui[3] = 0;
-  auto attachment0 = Fwog::RenderAttachment{ .texture = &_resources->frame.particle_hdr_r, .clearValue{.color{ccv}}, .clearOnLoad = true };
-  auto attachment1 = Fwog::RenderAttachment{ .texture = &_resources->frame.particle_hdr_g, .clearValue{.color{ccv}}, .clearOnLoad = true };
-  auto attachment2 = Fwog::RenderAttachment{ .texture = &_resources->frame.particle_hdr_b, .clearValue{.color{ccv}}, .clearOnLoad = true };
-  auto attachments = { attachment0, attachment1, attachment2 };
-  
-  // dumb hack to prevent warnings
-  glUseProgram(static_cast<GLuint>(_resources->backgroundPipeline.id));
-  glDisable(GL_BLEND);
-  Fwog::BeginRendering({ .colorAttachments = { attachments } });
-  Fwog::EndRendering();
-
   Fwog::BeginCompute("Render particles");
   {
+    constexpr uint32_t zero = 0;
+    auto clearInfo = Fwog::TextureClearInfo
+    {
+      .size = _resources->frame.particle_hdr_r.Extent(),
+      .format = Fwog::UploadFormat::R_INTEGER,
+      .type = Fwog::UploadType::UINT,
+      .data = &zero,
+    };
+
+    Fwog::Cmd::MemoryBarrier(Fwog::MemoryBarrierAccessBit::TEXTURE_UPDATE_BIT);
+    _resources->frame.particle_hdr_r.ClearImage(clearInfo);
+    _resources->frame.particle_hdr_g.ClearImage(clearInfo);
+    _resources->frame.particle_hdr_b.ClearImage(clearInfo);
     Fwog::Cmd::BindComputePipeline(_resources->particlePipeline);
     Fwog::Cmd::BindStorageBuffer(0, particles, 0, particles.Size());
     Fwog::Cmd::BindStorageBuffer(1, renderIndices, 0, renderIndices.Size());

@@ -29,7 +29,9 @@ void main()
 {
   uint index = gl_GlobalInvocationID.x;
   if (index >= inParticles.list.length())
+  {
     return;
+  }
 
   // undo decrement and return if nothing in freelist
   int indexIndex = atomicAdd(tombstones.size, -1) - 1;

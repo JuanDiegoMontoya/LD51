@@ -151,7 +151,7 @@ std::queue<Milestone> CreateDefaultMilestones(int startParticles,
 {
   std::queue<Milestone> milestones;
 
-  constexpr int interval = 10;
+  constexpr int interval = 2;
 
   milestones.push(Milestone
     {
@@ -159,7 +159,8 @@ std::queue<Milestone> CreateDefaultMilestones(int startParticles,
       .spawnMilestone = [=]
       {
         MakeParticles(eventBus, startParticles, { particleSystem->cursorX, particleSystem->cursorY}, 100);
-      } });
+      }
+    });
 
   milestones.push(Milestone
     {
@@ -169,7 +170,8 @@ std::queue<Milestone> CreateDefaultMilestones(int startParticles,
         MakeParticles(eventBus, particleSystem->GetNumParticles(), { particleSystem->cursorX, particleSystem->cursorY}, 75);
 
         MakeStaticWall(scene, { 0, -1 }, { 2.1, .03 });
-      } });
+      }
+    });
 
   milestones.push(Milestone
     {
@@ -179,7 +181,8 @@ std::queue<Milestone> CreateDefaultMilestones(int startParticles,
         MakeParticles(eventBus, particleSystem->GetNumParticles(), { particleSystem->cursorX, particleSystem->cursorY}, 50);
 
         MakeStaticWall(scene, { 0, 1 }, { 2.1, .03 });
-      } });
+      }
+    });
 
   milestones.push(Milestone
     {
@@ -189,7 +192,8 @@ std::queue<Milestone> CreateDefaultMilestones(int startParticles,
         MakeParticles(eventBus, particleSystem->GetNumParticles(), { particleSystem->cursorX, particleSystem->cursorY}, 25, { .4, .2, .1, 0 });
 
         MakeMovingWall(scene, { -1.5, 0 }, { 1.5, 0 }, 10, { .25, .25 });
-      } });
+      }
+    });
 
   milestones.push(Milestone
     {
@@ -199,7 +203,8 @@ std::queue<Milestone> CreateDefaultMilestones(int startParticles,
         MakeParticles(eventBus, particleSystem->GetNumParticles(), { particleSystem->cursorX, particleSystem->cursorY}, 12, { .4, .2, .1, 0 });
 
         MakeMovingWall(scene, { 0, -1.5 }, { 0, 1.5 }, 10, { .25, .25 });
-      } });
+      }
+    });
 
   milestones.push(Milestone
     {
@@ -210,7 +215,8 @@ std::queue<Milestone> CreateDefaultMilestones(int startParticles,
 
         MakeStaticWall(scene, { -1, 0 }, { .03, 2.1 });
         MakeStaticWall(scene, { 1, 0 }, { .03, 2.1});
-      } });
+      }
+    });
 
   milestones.push(Milestone
     {
@@ -221,7 +227,8 @@ std::queue<Milestone> CreateDefaultMilestones(int startParticles,
 
         MakeMovingWall(scene, { -.75, 0 }, { -1.11, 0 }, 10, { .4, 2.1 });
         MakeMovingWall(scene, { 1.11, 0 }, { .75, 0 }, 10, { .4, 2.1 });
-      } });
+      }
+    });
 
   milestones.push(Milestone
     {
@@ -232,7 +239,8 @@ std::queue<Milestone> CreateDefaultMilestones(int startParticles,
 
         MakeMovingWall(scene, { 0, -.75 }, { 0, -1.11 }, 10, { 2.1, .4 });
         MakeMovingWall(scene, { 0, 1.11 }, { 0, .75 }, 10, { 2.1, .4 });
-      } });
+      }
+    });
 
   milestones.push(Milestone
     {
@@ -383,11 +391,6 @@ void Application::Run()
   GameState gameState = GameState::MENU;
   int startParticles = 1000;
   auto milestoneTracker = MilestoneTracker();
-
-  // hack to fix a problem where particles don't spawn the first time the game is played
-  // no idea why this fixes anything
-  particleSystem.Reset(true, startParticles << 13);
-  milestoneTracker.Reset(CreateDefaultMilestones(startParticles, _eventBus, _scene, &particleSystem));
 
   struct Pause {};
   struct ScreenshotMode {};

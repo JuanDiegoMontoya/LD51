@@ -13,6 +13,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include <iostream>
+
 namespace ecs
 {
   namespace
@@ -187,14 +189,15 @@ namespace ecs
 
   std::uint32_t ParticleSystem::GetNumParticles()
   {
-    glFinish();
-    glMemoryBarrier(GL_ALL_BARRIER_BITS);
+    glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
     int32_t size{};
     glGetNamedBufferSubData(_tombstones->Handle(), 0, sizeof(int32_t), &size);
     auto ret = int32_t(MAX_PARTICLES) - size;
     if (ret < 0)
     {
+#ifndef NDEBUG
       printf("bug! value: %d\n", ret);
+#endif
       ret = 0;
     }
     return ret;
@@ -202,10 +205,9 @@ namespace ecs
 
   void ParticleSystem::HandleParticleAdd(AddParticles& e)
   {
-    glFinish();
     Fwog::BeginCompute("Copy particles");
     {
-      auto tempBuffer = Fwog::TypedBuffer<Particle>(e.particles);
+      auto tempBuffer = Fwog::TypedBuffer<Particle>(std::span(e.particles));
       Fwog::Cmd::BindComputePipeline(_particleAdd);
       Fwog::Cmd::BindStorageBuffer(0, *_particles, 0, _particles->Size());
       Fwog::Cmd::BindStorageBuffer(1, *_tombstones, 0, _tombstones->Size());
